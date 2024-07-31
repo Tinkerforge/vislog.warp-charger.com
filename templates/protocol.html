@@ -4,17 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WARP Charger protocol visualizer</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='protocol.css') }}">
+    <script src="{{ url_for('static', filename='protocol.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <script src="{{ url_for('static', filename='json-viewer.js') }}"></script>
-	<link rel="stylesheet" href="{{ url_for('static', filename='json-viewer.css') }}">
 </head>
 <body>
     <label for="log-axis" onchange="log_axis_clicked();">
         <input type="checkbox" id="log-axis" name="log-axis" checked/>
         Y-Achse logarithmisch
     </label>
-    <div style="height: 95vh; width: 100%;">
+    <div style="height: 50vh; width: 100%;">
         <canvas id="warp_chart"></canvas>
+    </div>
+
+    <div class="tab">
+        <button class="tablinks" onclick="open_tab(event, 'before-protocol-json')">Konfiguration vor dem Ladeprotokoll</button>
+        <button class="tablinks" onclick="open_tab(event, 'after-protocol-json')">Konfiguration nach dem Ladeprotokoll</button>
+        <button class="tablinks" onclick="open_tab(event, 'before-protocol-log')">Log vor dem Ladeprotokoll</button>
+        <button class="tablinks" onclick="open_tab(event, 'after-protocol-log')">Log nach dem Ladeprotokoll</button>
+    </div>
+    <div id="before-protocol-json" class="tabcontent">
+    </div>
+    <div id="after-protocol-json" class="tabcontent">
+    </div>
+    <div id="before-protocol-log" class="tabcontent">
+        <textarea id="before-protocol-log-text" rows="50">
+        </textarea>
+    </div>
+    <div id="after-protocol-log" class="tabcontent">
+        <textarea id="after-protocol-log-text" rows="50">
+        </textarea>
     </div>
     <script>
         let config = {
@@ -72,6 +93,13 @@
             }
             chart = new Chart(document.getElementById('warp_chart'), config);
         };
+
+        new JsonViewer({value: {{ before_protocol_json|tojson }}, maxDisplayLength: 10}).render('#before-protocol-json');
+        new JsonViewer({value: {{ after_protocol_json|tojson }}, maxDisplayLength: 10}).render('#after-protocol-json');
+        before_protocol_log_dict = {{ before_protocol_log|tojson }}
+        after_protocol_log_dict = {{ after_protocol_log|tojson }}
+        document.getElementById('before-protocol-log-text').value = before_protocol_log_dict.data;
+        document.getElementById('after-protocol-log-text').value = after_protocol_log_dict.data;
 
     </script>
 </body>

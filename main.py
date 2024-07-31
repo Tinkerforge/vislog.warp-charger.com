@@ -1,7 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 from flask import Flask, request, render_template, abort, redirect
 import shortuuid
 import os
-import re
+import json
 import datetime
 import logging
 import pandas as pd
@@ -43,22 +46,34 @@ def view_protocol(protocol_id):
     found_header = False
     csv = ""
     # Read the CSV protocol file
-    with open(file_path, 'r') as f:
-        for line in f.readlines():
-            if not found_header and re.match(r'^millis,(STATE)?,.*$', line.strip()) != None:
-                found_header = True
+    data = open(file_path, 'r').read().split('\n\n')
+    try:
+        before_protocol_json = json.loads(data[0])
+    except:
+        before_protocol_json = {}
+    try:
+        before_protocol_log  = data[1]
+    except:
+        before_protocol_log  = ""
+    try:
+        protocol_csv         = data[2]
+    except:
+        protocol_csv         = ""
+    try:
+        after_protocol_json  = json.loads(data[3])
+    except:
+        after_protocol_json  = {}
+    try:
+        after_protocol_log   = data[4]
+    except:
+        after_protocol_log   = ""
 
-            if found_header:
-                if len(line.strip()) == 0:
-                    break
-
-                csv += line
-
-    # Get important data from CSV
-    df = pd.read_csv(StringIO(csv))
-
-    millis = list(map(lambda v: datetime.datetime.fromtimestamp(v/1000).strftime('%H:%M:%S'), df['millis']))
-    #millis = list(df['millis'])
+    try:
+        # Get important data from CSV
+        df = pd.read_csv(StringIO(protocol_csv))
+        millis = list(map(lambda v: datetime.datetime.fromtimestamp(v/1000).strftime('%H:%M:%S'), df['millis']))
+    except:
+        millis = []
 
     dataset = []
     try:
@@ -130,7 +145,15 @@ def view_protocol(protocol_id):
     }
 
     # Render the protocol with syntax highlighting
-    return render_template('protocol.html', labels=millis, data=data)
+    return render_template(
+        'protocol.html', 
+        labels               = millis, 
+        data                 = data, 
+        before_protocol_json = before_protocol_json, 
+        after_protocol_json  = after_protocol_json,
+        before_protocol_log  = {"data": before_protocol_log}, 
+        after_protocol_log   = {"data": after_protocol_log},
+    )
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))
