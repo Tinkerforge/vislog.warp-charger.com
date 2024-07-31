@@ -5,7 +5,10 @@ import re
 import datetime
 import pandas as pd
 from io import StringIO
+
 app = Flask(__name__)
+
+DEFAULT_PORT = 5001
 
 # Directory to store protocol files
 PROTOCOL_DIR = 'protocols'
@@ -128,5 +131,6 @@ def view_protocol(protocol_id):
     # Render the protocol with syntax highlighting
     return render_template('protocol.html', labels=millis, data=data)
 
+port = int(os.environ.get('PORT', DEFAULT_PORT))
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0")
+    app.run(debug=True, host="0.0.0.0", port=port)
