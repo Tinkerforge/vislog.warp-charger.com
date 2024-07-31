@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WARP Charger protocol visualizer</title>
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <script src="{{ url_for('static', filename='json-viewer.js') }}"></script>
+	<link rel="stylesheet" href="{{ url_for('static', filename='json-viewer.css') }}">
+</head>
+<body>
+    <label for="log-axis" onchange="log_axis_clicked();">
+        <input type="checkbox" id="log-axis" name="log-axis" checked/>
+        Y-Achse logarithmisch
+    </label>
+    <div style="height: 95vh; width: 100%;">
+        <canvas id="warp_chart"></canvas>
+    </div>
+    <script>
+        let config = {
+            type: 'line',
+            data: {{ data | tojson}},
+            options: {
+				animation: false,
+                maintainAspectRatio: false,
+                elements: {
+                    point: {
+                        radius: 0
+                    }
+                },
+                hover: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Ladeprotokoll'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    },
+
+                },
+                scales: {
+                    x: {
+                        display: true,
+                    },
+                    y: {
+                        display: true,
+                        type: 'logarithmic',
+                    }
+                }
+            }
+        };
+        let chart = new Chart(document.getElementById('warp_chart'), config);
+
+        function log_axis_clicked() {
+            checkbox = document.getElementById('log-axis');
+
+            chart.destroy()
+            if(checkbox.checked) {
+                config.options.scales.y = {
+                    display: true,
+                    type: 'logarithmic'
+                }
+            } else {
+                config.options.scales.y = {
+                    display: true,
+                }
+            }
+            chart = new Chart(document.getElementById('warp_chart'), config);
+        };
+
+    </script>
+</body>
+</html>

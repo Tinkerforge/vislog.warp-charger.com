@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WARP Charger Ladeprotokoll-Visualisierer</title>
+    <style>
+        input[type="file"] {
+            position: absolute;
+            left: 0;
+            opacity: 0;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        .upload-btn-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #555;
+            border: 3px dotted #bebebe;
+            border-radius: 10px;
+        }
+
+        .btn {
+            display: inline-block;
+            position: relative;
+            height: 100px;
+            width: 400px;
+            border: 2px solid gray;
+            color: #555;
+            background-color: white;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-btn-wrapper">
+        <form method="POST" id="warp-form" enctype="multipart/form-data" action="/">
+            <button class="btn">📁 WARP Charger Ladeprotokoll hochladen...</button>
+            <input type="file" id="warp-input" name="file" accept=".txt">
+        </form>
+    </div>
+    <script>
+        // Automatically submit file
+        document.getElementById("warp-input").onchange = function() {
+            document.getElementById("warp-form").submit();
+        };
+    </script>
+</body>
+</html>
