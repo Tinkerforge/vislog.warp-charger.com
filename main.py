@@ -3,6 +3,7 @@ import shortuuid
 import os
 import re
 import datetime
+import logging
 import pandas as pd
 from io import StringIO
 
@@ -131,6 +132,7 @@ def view_protocol(protocol_id):
     # Render the protocol with syntax highlighting
     return render_template('protocol.html', labels=millis, data=data)
 
+logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))
 if __name__ == '__main__':
     app.run(debug=True, host="0.0.0.0", port=port)
