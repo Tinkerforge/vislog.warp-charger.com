@@ -78,14 +78,22 @@ function vislog_protocol(data) {
     };
     chart = new Chart(document.getElementById('warp_chart'), config);
 
-    new JsonViewer({value: data.before_protocol_json, maxDisplayLength: 10}).render('#before-protocol-json');
-    new JsonViewer({value: data.after_protocol_json, maxDisplayLength: 10}).render('#after-protocol-json');
+    const tree_before = jsonview.create(data.before_protocol_json);
+    jsonview.render(tree_before, document.querySelector('#before-protocol-json'));
+    jsonview.expand(tree_before);
+    const tree_after = jsonview.create(data.before_protocol_json);
+    jsonview.render(tree_after, document.querySelector('#after-protocol-json'));
+    jsonview.expand(tree_after);
+
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
  }
 
 function vislog_report(data) {
-    new JsonViewer({value: data.report_json, maxDisplayLength: 10}).render('#report-json');
+    const tree = jsonview.create(data.report_json);
+    jsonview.render(tree, document.querySelector('#report-json'));
+    jsonview.expand(tree);
+
     document.getElementById('report-log-text').value = data.report_log;
     document.getElementById('report-dump-text').value = data.report_dump;
 }
