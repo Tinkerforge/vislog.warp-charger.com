@@ -88,7 +88,6 @@ function vislog_protocol(data) {
                     mode: 'index',
                     intersect: false
                 },
-
             },
             scales: {
                 x: {

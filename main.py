@@ -19,6 +19,150 @@ PROTOCOL_DIR = 'protocols'
 if not os.path.exists(PROTOCOL_DIR):
     os.makedirs(PROTOCOL_DIR)
 
+chart_config = [{
+    'csv_title': 'allowed_charging_current',
+    'label':     'Erlaubter Ladestrom (mA)',
+}, {
+    'csv_title': 'cp_pwm_duty_cycle',
+    'label':     'CP PWM (% Duty Cycle)',
+    'edit_func':  lambda df: list(map(lambda v: v/10.0, df)),
+}, {
+    'csv_title': 'iec61851_state',
+    'label':     'IEC61851 State',
+}, {
+    'csv_title': 'power',
+    'label':     'Leistung (W)',
+}, {
+    'csv_title': 'current_0',
+    'label':     'Strom L1 (mA)',
+}, {
+    'csv_title': 'current_1',
+    'label':     'Strom L2 (mA)',
+}, {
+    'csv_title': 'current_2',
+    'label':     'Strom L3 (mA)',
+}, { # old title
+    'csv_title': 'resistance_cp_pe',
+    'label':     'Widerstand CP/PE (Ohm)',
+    'hidden':    True
+}, { # new title
+    'csv_title': 'CP/PE',
+    'label':     'Widerstand CP/PE (Ohm)',
+    'hidden':    True
+}, {
+    'csv_title': 'contactor_state',
+    'label':     'Zustand Schütz',
+    'hidden':    True
+}, {
+    'csv_title': 'contactor_error',
+    'label':     'Fehlerzustand Schütz',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_0_active',
+    'label':     'Phase 0 Aktiv',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_1_active',
+    'label':     'Phase 1 Aktiv',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_2_active',
+    'label':     'Phase 2 Aktiv',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_0_connected',
+    'label':     'Phase 0 Verbunden',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_1_connected',
+    'label':     'Phase 1 Verbunden',
+    'hidden':    True
+}, {
+    'csv_title': 'phase_2_connected',
+    'label':     'Phase 2 Verbunden',
+    'hidden':    True
+}, {
+    'csv_title': 'time_since_state_change',
+    'label':     'Zeit seit Zustandswechsel',
+    'hidden':    True
+}, { # old title
+    'csv_title': 'voltage_plus_12v',
+    'label':     'Spannung +12V',
+    'hidden':    True
+}, {
+    'csv_title': 'voltage_minus_12v',
+    'label':     'Spannung -12V',
+    'hidden':    True
+}, #{ # new title: This captures +12V and -12V are ADC values, not voltages...
+#    'csv_title': '+12V',
+#    'label':     'Spannung +12V',
+#    'hidden':    True
+#}, {
+#    'csv_title': '-12V',
+#    'label':     'Spannung -12V',
+#    'hidden':    True
+#}
+
+# Slots may be interesting, but they use up so much space...
+#{
+#    'csv_title': 'incoming_cable',
+#    'label':     'Slot incoming_cable',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'outgoing_cable',
+#    'label':     'Slot outgoing_cable',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'shutdown_input',
+#    'label':     'Slot shutdown_input',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'gp_input',
+#    'label':     'Slot gp_input',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'autostart_button',
+#    'label':     'Slot autostart_button',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'global',
+#    'label':     'Slot global',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'user',
+#    'label':     'Slot user',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'charge_manager',
+#    'label':     'Slot charge_manager',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'external',
+#    'label':     'Slot external',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'modbus_tcp',
+#    'label':     'Slot modbus_tcp',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'modbus_tcp_enable',
+#    'label':     'Slot modbus_tcp_enable',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'ocpp',
+#    'label':     'Slot ocpp',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'charge_limits',
+#    'label':     'Slot charge_limits',
+#    'hidden':    True
+#}, {
+#    'csv_title': 'require_meter',
+#    'label':     'Slot require_meter',
+#    'hidden':    True
+#}
+]
+
 # Route for the main page
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -116,63 +260,26 @@ def handle_protocol(data):
         millis = []
 
     dataset = []
-    try:
-        dataset.append({
-            'label': 'Erlaubter Ladestrom (mA)',
-            'data': list(df['allowed_charging_current'])
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'CP PWM (% Duty Cycle)',
-            'data': list(map(lambda v: v/10.0, (df['cp_pwm_duty_cycle']))),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'IEC61851 State',
-            'data': list(df['iec61851_state']),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'Leistung (W)',
-            'data': list(df['power']),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'Strom L1 (mA)',
-            'data': list(df['current_0']),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'Strom L2 (mA)',
-            'data': list(df['current_1']),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'Strom L3 (mA)',
-            'data': list(df['current_2']),
-        })
-    except:
-        pass
-    try:
-        dataset.append({
-            'label': 'Widerstand CP/PE (Ohm)',
-            'data': list(df['resistance_cp_pe']),
-            'hidden': True
-        })
-    except:
-        pass
+    for cc in chart_config:
+        try:
+            col = (df[cc['csv_title']])
+            new_data = {
+                'label': cc.get('label')
+            }
+
+            edit_func = cc.get('edit_func')
+            if edit_func:
+                new_data['data'] = edit_func(col)
+            else:
+                new_data['data'] = list(col) #list(df['current_0']), #list(col),
+
+            hidden = cc.get('hidden')
+            if hidden:
+                new_data['hidden'] = hidden
+
+            dataset.append(new_data)
+        except:
+            pass
 
     # Show 0 values as 0.1 since chart.js can't show 0 in log view...
     # see https://github.com/chartjs/Chart.js/issues/9629
