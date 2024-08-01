@@ -1,3 +1,6 @@
+let chart  = undefined;
+let config = undefined;
+
 function open_tab(evt, tab) {
     var i, tabcontent, tablinks;
 
@@ -18,8 +21,25 @@ function open_tab(evt, tab) {
     evt.currentTarget.className += " active";
 }
 
+function log_axis_clicked() {
+    checkbox = document.getElementById('log-axis');
+
+    chart.destroy()
+    if(checkbox.checked) {
+        config.options.scales.y = {
+            display: true,
+            type: 'logarithmic'
+        }
+    } else {
+        config.options.scales.y = {
+            display: true,
+        }
+    }
+    chart = new Chart(document.getElementById('warp_chart'), config);
+};
+
 function vislog_protocol(data) {
-    let config = {
+    config = {
         type: 'line',
         data: data.chart,
         options: {
@@ -56,24 +76,7 @@ function vislog_protocol(data) {
             }
         }
     };
-    let chart = new Chart(document.getElementById('warp_chart'), config);
-
-    function log_axis_clicked() {
-        checkbox = document.getElementById('log-axis');
-
-        chart.destroy()
-        if(checkbox.checked) {
-            config.options.scales.y = {
-                display: true,
-                type: 'logarithmic'
-            }
-        } else {
-            config.options.scales.y = {
-                display: true,
-            }
-        }
-        chart = new Chart(document.getElementById('warp_chart'), config);
-    };
+    chart = new Chart(document.getElementById('warp_chart'), config);
 
     new JsonViewer({value: data.before_protocol_json, maxDisplayLength: 10}).render('#before-protocol-json');
     new JsonViewer({value: data.after_protocol_json, maxDisplayLength: 10}).render('#after-protocol-json');
