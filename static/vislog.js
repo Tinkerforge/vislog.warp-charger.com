@@ -80,3 +80,9 @@ function vislog_protocol(data) {
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
  }
+
+function vislog_report(data) {
+    new JsonViewer({value: data.report_json, maxDisplayLength: 10}).render('#report-json');
+    document.getElementById('report-log-text').value = data.report_log;
+    document.getElementById('report-dump-text').value = data.report_dump;
+}

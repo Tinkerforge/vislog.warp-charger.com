@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger Ladeprotokoll-Visualisierer</title>
+    <title>WARP Charger Ladeprotokoll- und Debug-Report-Visualisierer</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
     <style>
         input[type="file"] {
@@ -48,7 +48,7 @@
 <body>
     <div class="upload-btn-wrapper">
         <form method="POST" id="warp-form" enctype="multipart/form-data" action="/">
-            <button class="btn">📁 WARP Charger Ladeprotokoll hochladen...</button>
+            <button class="btn">📁 WARP Charger Ladeprotokoll oder Debug-Report hochladen...</button>
             <input type="file" id="warp-input" name="file" accept=".txt">
         </form>
     </div>

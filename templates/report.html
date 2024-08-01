@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WARP Charger protocol visualizer</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
+    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
+    <script src="{{ url_for('static', filename='json-viewer.js') }}"></script>
+</head>
+<body>
+    <div class="tab">
+        <button class="tablinks" onclick="open_tab(event, 'report-json')">Konfiguration</button>
+        <button class="tablinks" onclick="open_tab(event, 'report-log')">Log</button>
+        <button class="tablinks" onclick="open_tab(event, 'report-dump')">Coredump</button>
+    </div>
+    <div id="report-json" class="tabcontent">
+    </div>
+    <div id="report-log" class="tabcontent">
+        <textarea id="report-log-text" rows="50">
+        </textarea>
+    </div>
+    <div id="report-dump" class="tabcontent">
+        <textarea id="report-dump-text" rows="50">
+        </textarea>
+    </div>
+    <script>
+        let data = {{ data | tojson}};
+        vislog_report(data)
+    </script>
+</body>
+</html>

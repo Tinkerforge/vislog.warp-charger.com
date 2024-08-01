@@ -26,27 +26,67 @@ def index():
         # upload file flask
         f = request.files.get('file')
 
-        protocol_id = shortuuid.uuid()
-        file_path = os.path.join(PROTOCOL_DIR, protocol_id)
+        uuid = shortuuid.uuid()
+        file_path = os.path.join(PROTOCOL_DIR, uuid)
         f.save(file_path)
 
-        return redirect('/' + protocol_id)
+        return redirect('/' + uuid)
 
     # Render the form with available languages
     return render_template('index.html')
 
 # Route to view a specific protocol by its ID
-@app.route('/<protocol_id>')
-def view_protocol(protocol_id):
+@app.route('/<uuid>')
+def view_id(uuid):
     # Create the file path for the protocol
-    file_path = os.path.join(PROTOCOL_DIR, protocol_id)
+    file_path = os.path.join(PROTOCOL_DIR, uuid)
     if not os.path.exists(file_path):
         abort(404)  # Return a 404 error if the protocol does not exist
 
-    found_header = False
-    csv = ""
-    # Read the CSV protocol file
     data = open(file_path, 'r').read().split('\n\n')
+    try:
+        is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
+    except:
+        abort(400)
+
+    if is_report:
+        return handle_report(data)
+    else:
+        return handle_protocol(data)
+
+def handle_report(data):
+    try:
+        # Fix json syntax error that can happen in report
+        data_json     = data[1].replace('": ,', '": {},')
+        report_json   = json.loads(data_json)
+    except:
+        report_json   = {}
+    try:
+        report_log    = data[2]
+    except:
+        report_log    = ""
+    try:
+        report_title2 = data[3]
+    except:
+        report_title2 = ""
+    try:
+        if '___CORE_DUMP_START___' in report_title2:
+            report_dump   = data[4]
+        else:
+            raise
+    except:
+        report_dump = "Es befindet sich kein Coredump im Debug-Report"
+
+    data = {
+        'report_json': report_json,
+        'report_log':  report_log,
+        'report_dump': report_dump,
+    }
+
+    # Render the protocol with syntax highlighting
+    return render_template('report.html', data = data)
+
+def handle_protocol(data):
     try:
         before_protocol_json = json.loads(data[0])
     except:
