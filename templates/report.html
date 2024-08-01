@@ -11,11 +11,11 @@
 </head>
 <body>
     <div class="tab">
-        <button class="tablinks" onclick="open_tab(event, 'report-json')">Konfiguration</button>
+        <button class="tablinks active" onclick="open_tab(event, 'report-json')">Konfiguration</button>
         <button class="tablinks" onclick="open_tab(event, 'report-log')">Log</button>
         <button class="tablinks" onclick="open_tab(event, 'report-dump')">Coredump</button>
     </div>
-    <div id="report-json" class="tabcontent">
+    <div id="report-json" class="tabcontent" style="display:block;">
     </div>
     <div id="report-log" class="tabcontent">
         <textarea id="report-log-text" rows="50">
