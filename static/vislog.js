@@ -38,6 +38,31 @@ function log_axis_clicked() {
     chart = new Chart(document.getElementById('warp_chart'), config);
 };
 
+function make_jsonview(json, selector) {
+    const tree = jsonview.create(json);
+    jsonview.render(tree, document.querySelector(selector));
+    // To only show modified configs, don't expand the tree, only toggle the head and then expand the important children below.
+    //jsonview.toggleNode(tree);
+    jsonview.expand(tree);
+    jsonview.traverse(tree, function(node) {
+        if(node.key.includes('modified')) {
+            if(node.value.modified == 2) {
+                search = node.key.replace('_modified', '')
+                jsonview.traverse(tree, function(node) {
+                    if(node.key == search) {
+                        node.el.classList.add("important");
+                        //jsonview.expand(node);
+                        // color children?
+                        //node.children.forEach((child) => {
+                        //    child.el.classList.add("important");
+                        //});
+                    }
+                });
+            }
+        }
+    });
+}
+
 function vislog_protocol(data) {
     config = {
         type: 'line',
@@ -78,21 +103,15 @@ function vislog_protocol(data) {
     };
     chart = new Chart(document.getElementById('warp_chart'), config);
 
-    const tree_before = jsonview.create(data.before_protocol_json);
-    jsonview.render(tree_before, document.querySelector('#before-protocol-json'));
-    jsonview.expand(tree_before);
-    const tree_after = jsonview.create(data.before_protocol_json);
-    jsonview.render(tree_after, document.querySelector('#after-protocol-json'));
-    jsonview.expand(tree_after);
+    make_jsonview(data.before_protocol_json, '#before-protocol-json')
+    make_jsonview(data.after_protocol_json,  '#after-protocol-json')
 
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
  }
 
 function vislog_report(data) {
-    const tree = jsonview.create(data.report_json);
-    jsonview.render(tree, document.querySelector('#report-json'));
-    jsonview.expand(tree);
+    make_jsonview(data.report_json, '#report-json')
 
     document.getElementById('report-log-text').value = data.report_log;
     document.getElementById('report-dump-text').value = data.report_dump;
