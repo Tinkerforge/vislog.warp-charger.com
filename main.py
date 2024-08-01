@@ -140,20 +140,15 @@ def view_protocol(protocol_id):
         d['data'] = list(map(lambda v: 0.01 if v == 0 else v, d['data']))
 
     data = {
-        'labels': millis,
-        'datasets': dataset,
+        'chart':                {'labels': millis, 'datasets': dataset},
+        'before_protocol_json': before_protocol_json,
+        'after_protocol_json':  after_protocol_json,
+        'before_protocol_log':  before_protocol_log,
+        'after_protocol_log':   after_protocol_log,
     }
 
     # Render the protocol with syntax highlighting
-    return render_template(
-        'protocol.html', 
-        labels               = millis, 
-        data                 = data, 
-        before_protocol_json = before_protocol_json, 
-        after_protocol_json  = after_protocol_json,
-        before_protocol_log  = {"data": before_protocol_log}, 
-        after_protocol_log   = {"data": after_protocol_log},
-    )
+    return render_template('protocol.html', data = data)
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))

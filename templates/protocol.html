@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WARP Charger protocol visualizer</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='protocol.css') }}">
-    <script src="{{ url_for('static', filename='protocol.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
+    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <script src="{{ url_for('static', filename='json-viewer.js') }}"></script>
 </head>
@@ -38,69 +38,8 @@
         </textarea>
     </div>
     <script>
-        let config = {
-            type: 'line',
-            data: {{ data | tojson}},
-            options: {
-				animation: false,
-                maintainAspectRatio: false,
-                elements: {
-                    point: {
-                        radius: 0
-                    }
-                },
-                hover: {
-                    mode: 'index',
-                    intersect: false
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Ladeprotokoll'
-                    },
-                    tooltip: {
-                        mode: 'index',
-                        intersect: false
-                    },
-
-                },
-                scales: {
-                    x: {
-                        display: true,
-                    },
-                    y: {
-                        display: true,
-                        type: 'logarithmic',
-                    }
-                }
-            }
-        };
-        let chart = new Chart(document.getElementById('warp_chart'), config);
-
-        function log_axis_clicked() {
-            checkbox = document.getElementById('log-axis');
-
-            chart.destroy()
-            if(checkbox.checked) {
-                config.options.scales.y = {
-                    display: true,
-                    type: 'logarithmic'
-                }
-            } else {
-                config.options.scales.y = {
-                    display: true,
-                }
-            }
-            chart = new Chart(document.getElementById('warp_chart'), config);
-        };
-
-        new JsonViewer({value: {{ before_protocol_json|tojson }}, maxDisplayLength: 10}).render('#before-protocol-json');
-        new JsonViewer({value: {{ after_protocol_json|tojson }}, maxDisplayLength: 10}).render('#after-protocol-json');
-        before_protocol_log_dict = {{ before_protocol_log|tojson }}
-        after_protocol_log_dict = {{ after_protocol_log|tojson }}
-        document.getElementById('before-protocol-log-text').value = before_protocol_log_dict.data;
-        document.getElementById('after-protocol-log-text').value = after_protocol_log_dict.data;
-
+        let data = {{ data | tojson}};
+        vislog_protocol(data)
     </script>
 </body>
 </html>
