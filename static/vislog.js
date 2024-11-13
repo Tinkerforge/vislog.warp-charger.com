@@ -113,5 +113,6 @@ function vislog_report(data) {
     make_jsonview(data.report_json, '#report-json')
 
     document.getElementById('report-log-text').value = data.report_log;
+    document.getElementById('report-trace-text').value = data.report_trace;
     document.getElementById('report-dump-text').value = data.report_dump;
 }

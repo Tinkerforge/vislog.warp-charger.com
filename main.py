@@ -205,26 +205,39 @@ def handle_report(data):
         report_json   = json.loads(data_json)
     except:
         report_json   = {}
+
     try:
         report_log    = data[2]
     except:
         report_log    = ""
-    try:
-        report_title2 = data[3]
-    except:
-        report_title2 = ""
-    try:
-        if '___CORE_DUMP_START___' in report_title2:
-            report_dump   = data[4]
-        else:
-            raise
-    except:
-        report_dump = "Es befindet sich kein Coredump im Debug-Report"
+
+    inside_trace = False
+    report_trace_blocks = []
+    inside_dump = False
+    report_dump_blocks = []
+
+    for block in data[3:]:
+        if '___TRACE_LOG_START___' in block:
+            inside_trace = True
+        elif '___CORE_DUMP_START___' in block:
+            inside_trace = False
+            inside_dump = True
+        elif inside_trace:
+            report_trace_blocks.append(block)
+        elif inside_dump:
+            report_dump_blocks.append(block)
+
+    if len(report_trace_blocks) == 0:
+        report_trace_blocks.append('Es befindet sich kein Trace-Log im Debug-Report')
+
+    if len(report_dump_blocks) == 0:
+        report_dump_blocks.append('Es befindet sich kein Coredump im Debug-Report')
 
     data = {
-        'report_json': report_json,
-        'report_log':  report_log,
-        'report_dump': report_dump,
+        'report_json':  report_json,
+        'report_log':   report_log,
+        'report_trace': '\n\n'.join(report_trace_blocks),
+        'report_dump':  '\n\n'.join(report_dump_blocks),
     }
 
     # Render the protocol with syntax highlighting
