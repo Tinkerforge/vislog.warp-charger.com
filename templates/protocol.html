@@ -11,10 +11,26 @@
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
-    <label for="log-axis" onchange="log_axis_clicked();">
-        <input type="checkbox" id="log-axis" name="log-axis" checked/>
-        Y-Achse logarithmisch
-    </label>
+    <div class="controls">
+        <div class="chart-info">
+            <div class="chart-header">
+                <h4>Angezeigte Spalten ({{ data.selected_column_labels|length }}):</h4>
+                <div class="chart-controls">
+                    <label for="log-axis" class="axis-control" onchange="log_axis_clicked();">
+                        <input type="checkbox" id="log-axis" name="log-axis" checked/>
+                        Y-Achse logarithmisch
+                    </label>
+                    <a href="javascript:void(0)" onclick="go_back_to_config()" class="config-link">Spalten ändern</a>
+                </div>
+            </div>
+            <div class="selected-columns">
+                {% for label in data.selected_column_labels %}
+                <span class="column-tag">{{ label }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <div style="height: 75vh; width: 100%;">
         <canvas id="warp_chart"></canvas>
     </div>
@@ -39,7 +55,18 @@
     </div>
     <script>
         let data = {{ data | tojson}};
+
+        function go_back_to_config() {
+            // Extract UUID from current URL
+            const pathParts = window.location.pathname.split('/');
+            const uuid = pathParts[1];
+            window.location.href = '/' + uuid;
+        }
+
         vislog_protocol(data)
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>

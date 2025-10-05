@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from flask import Flask, request, render_template, abort, redirect
+from flask import Flask, request, render_template, abort, redirect, url_for
 import shortuuid
 import os
 import json
@@ -9,6 +9,7 @@ import datetime
 import logging
 import pandas as pd
 from io import StringIO
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -93,75 +94,7 @@ chart_config = [{
     'csv_title': 'voltage_minus_12v',
     'label':     'Spannung -12V',
     'hidden':    True
-}, #{ # new title: This captures +12V and -12V are ADC values, not voltages...
-#    'csv_title': '+12V',
-#    'label':     'Spannung +12V',
-#    'hidden':    True
-#}, {
-#    'csv_title': '-12V',
-#    'label':     'Spannung -12V',
-#    'hidden':    True
-#}
-
-# Slots may be interesting, but they use up so much space...
-#{
-#    'csv_title': 'incoming_cable',
-#    'label':     'Slot incoming_cable',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'outgoing_cable',
-#    'label':     'Slot outgoing_cable',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'shutdown_input',
-#    'label':     'Slot shutdown_input',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'gp_input',
-#    'label':     'Slot gp_input',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'autostart_button',
-#    'label':     'Slot autostart_button',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'global',
-#    'label':     'Slot global',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'user',
-#    'label':     'Slot user',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'charge_manager',
-#    'label':     'Slot charge_manager',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'external',
-#    'label':     'Slot external',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'modbus_tcp',
-#    'label':     'Slot modbus_tcp',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'modbus_tcp_enable',
-#    'label':     'Slot modbus_tcp_enable',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'ocpp',
-#    'label':     'Slot ocpp',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'charge_limits',
-#    'label':     'Slot charge_limits',
-#    'hidden':    True
-#}, {
-#    'csv_title': 'require_meter',
-#    'label':     'Slot require_meter',
-#    'hidden':    True
-#}
-]
+}]
 
 # Route for the main page
 @app.route('/', methods=['GET', 'POST'])
@@ -179,7 +112,7 @@ def index():
     # Render the form with available languages
     return render_template('index.html')
 
-# Route to view a specific protocol by its ID
+# Route to view a specific protocol by its ID - shows configuration page
 @app.route('/<uuid>')
 def view_id(uuid):
     # Create the file path for the protocol
@@ -196,7 +129,32 @@ def view_id(uuid):
     if is_report:
         return handle_report(data)
     else:
-        return handle_protocol(data)
+        # Check if configuration parameter is provided
+        config_param = request.args.get('configuration')
+        if config_param:
+            return handle_protocol_chart(data, config_param)
+        else:
+            return handle_protocol_config(data, uuid)
+
+# Route to show the chart with selected columns
+@app.route('/<uuid>/chart')
+def view_chart(uuid):
+    # Create the file path for the protocol
+    file_path = os.path.join(PROTOCOL_DIR, uuid)
+    if not os.path.exists(file_path):
+        abort(404)  # Return a 404 error if the protocol does not exist
+
+    data = open(file_path, 'r').read().split('\n\n')
+    try:
+        is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
+    except:
+        abort(400)
+
+    if is_report:
+        return handle_report(data)
+    else:
+        config_param = request.args.get('configuration', '')
+        return handle_protocol_chart(data, config_param)
 
 def handle_report(data):
     try:
@@ -243,7 +201,8 @@ def handle_report(data):
     # Render the protocol with syntax highlighting
     return render_template('report.html', data = data)
 
-def handle_protocol(data):
+def parse_protocol_data(data):
+    # Parse protocol data and extract available columns
     try:
         before_protocol_json = json.loads(data[0])
     except:
@@ -266,49 +225,166 @@ def handle_protocol(data):
         after_protocol_log   = ""
 
     try:
-        # Get important data from CSV
+        # Get timestamp data from CSV
         df = pd.read_csv(StringIO(protocol_csv))
         millis = list(map(lambda v: datetime.datetime.fromtimestamp(v/1000).strftime('%H:%M:%S'), df['millis']))
     except:
         millis = []
+        df = None
+
+    # Get available columns for dynamic selection
+    available_columns = []
+    if df is not None:
+        # Filter out placeholder columns (all uppercase) and 'millis' column
+        available_columns = [col for col in df.columns
+                           if col != 'millis' and not col.isupper()]
+
+    return {
+        'before_protocol_json': before_protocol_json,
+        'before_protocol_log': before_protocol_log,
+        'protocol_csv': protocol_csv,
+        'after_protocol_json': after_protocol_json,
+        'after_protocol_log': after_protocol_log,
+        'df': df,
+        'millis': millis,
+        'available_columns': available_columns
+    }
+
+def handle_protocol_config(data, uuid):
+    # Show configuration page where user can select columns
+    parsed = parse_protocol_data(data)
+
+    # Create column metadata for the configuration page
+    column_metadata = []
+
+    # Add predefined columns from chart_config
+    predefined_columns = {cc['csv_title']: cc for cc in chart_config}
+
+    # First, add predefined columns in the order they appear in chart_config
+    for cc in chart_config:
+        col_name = cc['csv_title']
+        if col_name in parsed['available_columns']:
+            column_metadata.append({
+                'name': col_name,
+                'label': cc.get('label', col_name),
+                'predefined': True,
+                'hidden_by_default': cc.get('hidden', False)
+            })
+
+    # Then, add non-predefined columns
+    for col_name in parsed['available_columns']:
+        if col_name not in predefined_columns:
+            # Check if column is numeric
+            is_numeric = True
+            if parsed['df'] is not None:
+                try:
+                    col = parsed['df'][col_name]
+                    is_numeric = col.dtype not in ['object', 'string']
+                except:
+                    is_numeric = False
+
+            if is_numeric:
+                column_metadata.append({
+                    'name': col_name,
+                    'label': col_name,
+                    'predefined': False,
+                    'hidden_by_default': True
+                })
+
+    config_data = {
+        'uuid': uuid,
+        'column_metadata': column_metadata,
+        'before_protocol_json': parsed['before_protocol_json'],
+        'after_protocol_json': parsed['after_protocol_json'],
+        'before_protocol_log': parsed['before_protocol_log'],
+        'after_protocol_log': parsed['after_protocol_log'],
+    }
+
+    return render_template('protocol_config.html', data=config_data)
+
+def handle_protocol_chart(data, config_param):
+    # Show chart with only selected columns
+    parsed = parse_protocol_data(data)
+
+    # Decode configuration parameter
+    selected_columns = []
+    if config_param:
+        try:
+            # Decode URL-encoded column names
+            selected_columns = urllib.parse.unquote(config_param).split(',')
+            selected_columns = [col.strip() for col in selected_columns if col.strip()]
+        except:
+            selected_columns = []
+
+    # If no columns selected, show default visible columns
+    if not selected_columns:
+        selected_columns = [cc['csv_title'] for cc in chart_config if not cc.get('hidden', False)]
 
     dataset = []
-    for cc in chart_config:
-        try:
-            col = (df[cc['csv_title']])
-            new_data = {
-                'label': cc.get('label')
-            }
 
-            edit_func = cc.get('edit_func')
-            if edit_func:
-                new_data['data'] = edit_func(col)
-            else:
-                new_data['data'] = list(col) #list(df['current_0']), #list(col),
+    # Process only selected columns
+    predefined_columns = {cc['csv_title']: cc for cc in chart_config}
 
-            hidden = cc.get('hidden')
-            if hidden:
-                new_data['hidden'] = hidden
+    for col_name in selected_columns:
+        if parsed['df'] is not None and col_name in parsed['df'].columns:
+            try:
+                col = parsed['df'][col_name]
 
-            dataset.append(new_data)
-        except:
-            pass
+                # Use predefined config if available
+                if col_name in predefined_columns:
+                    cc = predefined_columns[col_name]
+                    new_data = {
+                        'label': cc.get('label', col_name),
+                        'csv_column': col_name
+                    }
 
-    # Show 0 values as 0.1 since chart.js can't show 0 in log view...
+                    edit_func = cc.get('edit_func')
+                    if edit_func:
+                        new_data['data'] = edit_func(col)
+                    else:
+                        new_data['data'] = list(col)
+                else:
+                    # Skip non-numeric columns
+                    if col.dtype in ['object', 'string']:
+                        continue
+
+                    new_data = {
+                        'label': col_name,
+                        'csv_column': col_name,
+                        'data': list(col)
+                    }
+
+                dataset.append(new_data)
+            except Exception as e:
+                print(f"Error processing column {col_name}: {e}")
+                pass
+
+    # Show 0 values as 0.01 since chart.js can't show 0 in log view...
     # see https://github.com/chartjs/Chart.js/issues/9629
     for d in dataset:
         d['data'] = list(map(lambda v: 0.01 if v == 0 else v, d['data']))
 
-    data = {
-        'chart':                {'labels': millis, 'datasets': dataset},
-        'before_protocol_json': before_protocol_json,
-        'after_protocol_json':  after_protocol_json,
-        'before_protocol_log':  before_protocol_log,
-        'after_protocol_log':   after_protocol_log,
+    # Create list of human-readable column labels for display
+    selected_column_labels = [d['label'] for d in dataset]
+
+    chart_data = {
+        'chart': {'labels': parsed['millis'], 'datasets': dataset},
+        'selected_columns': selected_columns,
+        'selected_column_labels': selected_column_labels,
+        'configuration': config_param,
+        'before_protocol_json': parsed['before_protocol_json'],
+        'after_protocol_json': parsed['after_protocol_json'],
+        'before_protocol_log': parsed['before_protocol_log'],
+        'after_protocol_log': parsed['after_protocol_log'],
     }
 
     # Render the protocol with syntax highlighting
-    return render_template('protocol.html', data = data)
+    return render_template('protocol.html', data=chart_data)
+
+def handle_protocol(data):
+    # Legacy function - now redirects to configuration page
+    # This is kept for backward compatibility, but should not be used
+    return handle_protocol_chart(data, '')
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))
