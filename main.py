@@ -10,6 +10,7 @@ import logging
 import pandas as pd
 from io import StringIO
 import urllib.parse
+import re
 
 app = Flask(__name__)
 
@@ -95,6 +96,52 @@ chart_config = [{
     'label':     'Spannung -12V',
     'hidden':    True
 }]
+
+def extract_real_timestamp(before_protocol_log, first_millis):
+    if not before_protocol_log or first_millis is None:
+        return None
+
+    # Find the last timestamp before CSV data starts
+    timestamp_pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{3})'
+    matches = re.findall(timestamp_pattern, before_protocol_log)
+
+    if not matches:
+        return None
+
+    # Use the last timestamp found (closest to CSV start)
+    last_match = matches[-1]
+    timestamp_str = f"{last_match[0]}.{last_match[1]}"
+
+    try:
+        # Parse the timestamp
+        real_timestamp = datetime.datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+
+        # Calculate the offset between real time and millis
+        # millis is milliseconds since microcontroller boot
+        millis_as_datetime = datetime.datetime.fromtimestamp(first_millis / 1000)
+        offset = real_timestamp - millis_as_datetime
+
+        return {
+            'real_timestamp': real_timestamp,
+            'offset': offset,
+            'first_millis': first_millis
+        }
+    except ValueError:
+        return None
+
+def convert_millis_to_real_time(millis_values, timestamp_info):
+    if not timestamp_info:
+        # Fallback to original behavior (fake timestamps)
+        return [datetime.datetime.fromtimestamp(v/1000).strftime('%H:%M:%S') for v in millis_values]
+
+    real_timestamps = []
+    for millis in millis_values:
+        # Convert millis to datetime and add the real time offset
+        millis_datetime = datetime.datetime.fromtimestamp(millis / 1000)
+        real_datetime = millis_datetime + timestamp_info['offset']
+        real_timestamps.append(real_datetime.strftime('%Y-%m-%d %H:%M:%S'))
+
+    return real_timestamps
 
 # Route for the main page
 @app.route('/', methods=['GET', 'POST'])
@@ -227,10 +274,17 @@ def parse_protocol_data(data):
     try:
         # Get timestamp data from CSV
         df = pd.read_csv(StringIO(protocol_csv))
-        millis = list(map(lambda v: datetime.datetime.fromtimestamp(v/1000).strftime('%H:%M:%S'), df['millis']))
+
+        # Extract real timestamp info from the log
+        first_millis = df['millis'].iloc[0] if len(df) > 0 else None
+        timestamp_info = extract_real_timestamp(before_protocol_log, first_millis)
+
+        # Convert millis to real timestamps
+        millis = convert_millis_to_real_time(df['millis'].tolist(), timestamp_info)
     except:
         millis = []
         df = None
+        timestamp_info = None
 
     # Get available columns for dynamic selection
     available_columns = []
@@ -247,7 +301,9 @@ def parse_protocol_data(data):
         'after_protocol_log': after_protocol_log,
         'df': df,
         'millis': millis,
-        'available_columns': available_columns
+        'available_columns': available_columns,
+        'timestamp_info': timestamp_info,
+        'has_real_timestamps': timestamp_info is not None
     }
 
 def handle_protocol_config(data, uuid):
