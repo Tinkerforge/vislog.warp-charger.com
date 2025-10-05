@@ -421,6 +421,32 @@ textarea {
   color: #add8e6;
 }
 
+/* Zoom reset button */
+.zoom-reset-btn {
+  background-color: #555555;
+  color: #f0f0f0;
+  border: 1px solid #666;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  margin: 0 5px;
+}
+
+.zoom-reset-btn:hover {
+  background-color: #666;
+}
+
+/* Zoom instructions */
+.zoom-instructions {
+  text-align: center;
+  padding: 5px;
+  color: #999;
+  font-size: 12px;
+  background-color: #333;
+  border-top: 1px solid #555;
+}
+
 /* Dark theme for JSON viewer */
 .json-view-container {
   background-color: #3a3a3a;

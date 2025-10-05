@@ -201,6 +201,26 @@ function vislog_protocol(data) {
                     labels: {
                         color: '#f0f0f0'
                     }
+                },
+                zoom: {
+                    zoom: {
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(85, 85, 85, 0.3)',
+                            borderColor: 'rgba(85, 85, 85, 0.8)',
+                            borderWidth: 1,
+                        },
+                        wheel: {
+                            enabled: false,
+                        },
+                        mode: 'xy',
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'xy',
+                        modifierKey: 'ctrl',
+                        threshold: 5,
+                    }
                 }
             },
             scales: {
@@ -238,7 +258,13 @@ function vislog_protocol(data) {
 
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
- }function vislog_report(data) {
+}
+
+function reset_zoom() {
+    if (chart) {
+        chart.resetZoom();
+    }
+}function vislog_report(data) {
     make_jsonview(data.report_json, '#report-json')
 
     document.getElementById('report-log-text').value = data.report_log;

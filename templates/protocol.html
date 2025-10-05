@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
     <script src="{{ url_for('static', filename='vislog.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
@@ -20,6 +21,7 @@
                         <input type="checkbox" id="log-axis" name="log-axis" checked/>
                         Y-Achse logarithmisch
                     </label>
+                    <button onclick="reset_zoom()" class="zoom-reset-btn" title="Zur ursprünglichen Ansicht zurückkehren">Zoom zurücksetzen</button>
                     <a href="javascript:void(0)" onclick="go_back_to_config()" class="config-link">Spalten ändern</a>
                 </div>
             </div>
