@@ -209,6 +209,7 @@ function vislog_protocol(data) {
                             backgroundColor: 'rgba(85, 85, 85, 0.3)',
                             borderColor: 'rgba(85, 85, 85, 0.8)',
                             borderWidth: 1,
+                            threshold: 20,
                         },
                         wheel: {
                             enabled: false,
