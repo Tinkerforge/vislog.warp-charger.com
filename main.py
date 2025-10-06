@@ -139,7 +139,7 @@ def convert_millis_to_real_time(millis_values, timestamp_info):
         # Convert millis to datetime and add the real time offset
         millis_datetime = datetime.datetime.fromtimestamp(millis / 1000)
         real_datetime = millis_datetime + timestamp_info['offset']
-        real_timestamps.append(real_datetime.strftime('%Y-%m-%d %H:%M:%S'))
+        real_timestamps.append(real_datetime.strftime('%H:%M:%S'))
 
     return real_timestamps
 
