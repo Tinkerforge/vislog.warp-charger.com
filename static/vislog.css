@@ -501,6 +501,13 @@ textarea {
   min-width: 80px;
 }
 
+.json-filters-actions {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
 .json-filters {
   display: flex;
   gap: 5px;
@@ -703,48 +710,10 @@ textarea {
   flex-wrap: wrap;
 }
 
-.filter-btn {
-  padding: 6px 12px;
-  border: 1px solid #666;
-  border-radius: 4px;
-  background-color: #444;
-  color: #f0f0f0;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.filter-btn:hover {
-  background-color: #555;
-  border-color: #777;
-}
-
-.filter-btn.active {
-  background-color: #555555;
-  border-color: #777;
-  color: #fff;
-}
-
 .json-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.action-btn {
-  padding: 6px 12px;
-  border: 1px solid #666;
-  border-radius: 4px;
-  background-color: #444;
-  color: #f0f0f0;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.action-btn:hover {
-  background-color: #555;
-  border-color: #777;
 }
 
 .json-content {
