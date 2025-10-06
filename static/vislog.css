@@ -1,6 +1,6 @@
 body {
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin: 0;
   padding: 0;
@@ -20,7 +20,7 @@ body {
   cursor: pointer;
   padding: 14px 16px;
   transition: 0.3s;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .tab button:hover {
@@ -42,7 +42,7 @@ body {
 textarea {
   width: 100%;
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
   border: 1px solid #666;
   border-radius: 4px;
   padding: 8px;
@@ -74,7 +74,7 @@ textarea {
 
 .column-selector h4 {
   margin: 0 0 10px 0;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .search-container {
@@ -88,7 +88,7 @@ textarea {
   border-radius: 3px;
   font-size: 14px;
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .search-container input::placeholder {
@@ -126,7 +126,7 @@ textarea {
   user-select: none;
   flex: 1;
   word-break: break-word;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .column-buttons {
@@ -163,7 +163,7 @@ textarea {
 }
 
 .config-container h1 {
-  color: #f0f0f0;
+  color: #eee;
   text-align: center;
   margin-bottom: 30px;
 }
@@ -189,7 +189,7 @@ textarea {
   font-size: 16px;
   box-sizing: border-box;
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .config-container .search-container input::placeholder {
@@ -253,7 +253,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .column-label {
@@ -314,7 +314,7 @@ textarea {
 
 .shareable-link h4 {
   margin: 0 0 10px 0;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .shareable-link input {
@@ -325,7 +325,7 @@ textarea {
   font-family: monospace;
   font-size: 14px;
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
   box-sizing: border-box;
 }
 
@@ -379,7 +379,7 @@ textarea {
   align-items: center;
   cursor: pointer;
   font-size: 14px;
-  color: #f0f0f0;
+  color: #eee;
   user-select: none;
 }
 
@@ -390,7 +390,7 @@ textarea {
 
 .chart-info h4 {
   margin: 0;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 .selected-columns {
@@ -402,7 +402,7 @@ textarea {
 
 .column-tag {
   background-color: #555555;
-  color: #f0f0f0;
+  color: #eee;
   padding: 3px 8px;
   border-radius: 3px;
   font-size: 12px;
@@ -424,7 +424,7 @@ textarea {
 /* Zoom reset button */
 .zoom-reset-btn {
   background-color: #555555;
-  color: #f0f0f0;
+  color: #eee;
   border: 1px solid #666;
   padding: 4px 8px;
   border-radius: 4px;
@@ -485,7 +485,7 @@ textarea {
   background-color: #2a2a2a;
   border: 1px solid #666;
   border-radius: 4px;
-  color: #f0f0f0;
+  color: #eee;
   font-size: 14px;
 }
 
@@ -496,7 +496,7 @@ textarea {
 }
 
 .search-results-count {
-  color: #b0b0b0;
+  color: #eee;
   font-size: 12px;
   min-width: 80px;
 }
@@ -519,7 +519,7 @@ textarea {
   background-color: #444;
   border: 1px solid #666;
   border-radius: 4px;
-  color: #f0f0f0;
+  color: #eee;
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
@@ -546,7 +546,7 @@ textarea {
   background-color: #666;
   border: 1px solid #777;
   border-radius: 4px;
-  color: #f0f0f0;
+  color: #eee;
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
@@ -617,7 +617,7 @@ textarea {
   content: attr(data-json-path);
   position: absolute;
   background-color: #1a1a1a;
-  color: #f0f0f0;
+  color: #eee;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -631,15 +631,15 @@ textarea {
 /* Override JSON viewer library styles for dark theme */
 .json-container {
   background-color: transparent !important;
-  color: #f0f0f0 !important;
+  color: #eee !important;
 }
 
 .json-container .json-key {
-  color: #b0b0b0 !important;
+  color: #eee !important;
 }
 
 .json-container .json-value {
-  color: #f0f0f0 !important;
+  color: #eee !important;
 }
 
 .json-container .json-number {
@@ -688,7 +688,7 @@ textarea {
   border: 1px solid #666;
   border-radius: 4px;
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
   font-size: 14px;
 }
 
@@ -699,7 +699,7 @@ textarea {
 }
 
 .search-results-count {
-  color: #b0b0b0;
+  color: #eee;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -755,7 +755,7 @@ textarea {
 table {
   background-color: #3a3a3a;
   border-collapse: collapse;
-  color: #f0f0f0;
+  color: #eee;
 }
 
 table, th, td {
@@ -776,7 +776,7 @@ th {
 /* Input and form element styles */
 input, select {
   background-color: #2a2a2a;
-  color: #f0f0f0;
+  color: #eee;
   border: 1px solid #666;
 }
 
