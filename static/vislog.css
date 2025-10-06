@@ -612,22 +612,6 @@ textarea {
   padding-left: 3px;
 }
 
-/* Path display on hover */
-.json-key:hover::after {
-  content: attr(data-json-path);
-  position: absolute;
-  background-color: #1a1a1a;
-  color: #eee;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  z-index: 1000;
-  margin-top: 20px;
-  margin-left: -10px;
-  white-space: nowrap;
-  border: 1px solid #555;
-}
-
 /* Override JSON viewer library styles for dark theme */
 .json-container {
   background-color: transparent !important;
