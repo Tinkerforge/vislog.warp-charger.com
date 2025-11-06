@@ -50,7 +50,7 @@ textarea {
 }
 
 .important {
-  background: #8b4444;
+  background: #8b4444 !important;
 }
 
 .controls {
@@ -593,7 +593,7 @@ textarea {
 }
 
 .json-type-object.modified-config > .line {
-  border-left-color: #8b4444;
+  border-left-color: #44448b;
 }
 
 /* Timestamp hints */
@@ -606,8 +606,8 @@ textarea {
 
 /* Improved modified configuration highlighting */
 .modified-config {
-  background-color: rgba(139, 68, 68, 0.3) !important;
-  border-left: 3px solid #8b4444 !important;
+  background-color: rgba(68, 68, 139, 0.3);
+  border-left: 3px solid #44448b;
   margin-left: -3px;
   padding-left: 3px;
 }
@@ -730,9 +730,9 @@ textarea {
 
 /* Modified configuration highlighting */
 .modified-config {
-  border-left: 3px solid #ff6b6b;
+  border-left: 3px solid #6b6bff;
   padding-left: 8px;
-  background-color: rgba(255, 107, 107, 0.1);
+  background-color: rgba(107, 107, 255, 0.1);
 }
 
 /* Table styles for dark theme */

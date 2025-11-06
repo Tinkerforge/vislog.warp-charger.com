@@ -204,11 +204,13 @@ function make_jsonview(json, selector, options = {}) {
 
         // Handle modified configurations
         if(node.key && node.key.includes('modified')) {
-            if(node.value && node.value.modified == 2) {
+            if(node.value && (node.value.modified == 1 || node.value.modified == 2 || node.value.modified == 3)) {
                 search = node.key.replace('_modified', '')
                 jsonview.traverse(tree, function(searchNode) {
                     if(searchNode.key == search) {
-                        searchNode.el.classList.add("important");
+                        if (node.value.modified == 1 || node.value.modified == 3) {
+                            searchNode.el.classList.add("important");
+                        }
                         searchNode.el.classList.add("modified-config");
                     }
                 });
