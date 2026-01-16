@@ -1,38 +1,100 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WARP Charger protocol visualizer</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
     <script src="{{ url_for('static', filename='vislog.js') }}"></script>
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
-    <div class="tab">
-        <button class="tablinks active" onclick="open_tab(event, 'report-json')">Konfiguration</button>
-        <button class="tablinks" onclick="open_tab(event, 'report-log')">Ereignis-Log</button>
-        <button class="tablinks" onclick="open_tab(event, 'report-trace')">Trace-Log</button>
-        <button class="tablinks" onclick="open_tab(event, 'report-dump')">Coredump</button>
+    <!-- Theme Toggle -->
+    <div class="theme-toggle">
+        <button class="btn btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
+            <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+            <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
+        </button>
     </div>
-    <div id="report-json" class="tabcontent" style="display:block;">
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="config-tab" data-bs-toggle="tab" data-bs-target="#report-json" type="button" role="tab">
+                <i class="bi bi-gear"></i> Konfiguration
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="log-tab" data-bs-toggle="tab" data-bs-target="#report-log" type="button" role="tab">
+                <i class="bi bi-journal-text"></i> Ereignis-Log
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" type="button" role="tab">
+                <i class="bi bi-bug"></i> Trace-Log
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" type="button" role="tab">
+                <i class="bi bi-file-binary"></i> Coredump
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom">
+        <div class="tab-pane fade show active p-3" id="report-json" role="tabpanel">
+        </div>
+        <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
+            <textarea id="report-log-text" class="form-control log-textarea" rows="40" readonly></textarea>
+        </div>
+        <div class="tab-pane fade p-3" id="report-trace" role="tabpanel">
+            <textarea id="report-trace-text" class="form-control log-textarea" rows="40" readonly></textarea>
+        </div>
+        <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
+            <textarea id="report-dump-text" class="form-control log-textarea" rows="40" readonly></textarea>
+        </div>
     </div>
-    <div id="report-log" class="tabcontent">
-        <textarea id="report-log-text" rows="50">
-        </textarea>
-    </div>
-    <div id="report-trace" class="tabcontent">
-        <textarea id="report-trace-text" rows="50">
-        </textarea>
-    </div>
-    <div id="report-dump" class="tabcontent">
-        <textarea id="report-dump-text" rows="50">
-        </textarea>
-    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
         let data = {{ data | tojson}};
-        vislog_report(data)
+
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const lightIcon = document.getElementById('theme-icon-light');
+            const darkIcon = document.getElementById('theme-icon-dark');
+            if (theme === 'dark') {
+                lightIcon.classList.add('d-none');
+                darkIcon.classList.remove('d-none');
+            } else {
+                lightIcon.classList.remove('d-none');
+                darkIcon.classList.add('d-none');
+            }
+        }
+
+        // Load saved theme
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        })();
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            vislog_report(data);
+        });
     </script>
 </body>
 </html>

@@ -149,21 +149,21 @@ function make_jsonview(json, selector, options = {}) {
     controls.className = 'json-controls';
     controls.innerHTML = `
         <div class="json-search-container">
-            <input type="text" class="json-search" placeholder="Search configurations... (Enter: next, Shift+Enter: previous)" />
+            <input type="text" class="json-search form-control" placeholder="Search configurations... (Enter: next, Shift+Enter: previous)" />
             <div class="search-results-count"></div>
         </div>
         <div class="json-filters-actions">
-            <div class="json-filters">
-                <button class="filter-btn active" data-filter="all" title="Show all configurations">All</button>
-                <button class="filter-btn" data-filter="modified" title="Show only modified configurations">Modified</button>
-                <button class="filter-btn" data-filter="numbers" title="Show only numeric values">Numbers</button>
-                <button class="filter-btn" data-filter="strings" title="Show only string values">Strings</button>
-                <button class="filter-btn" data-filter="booleans" title="Show only boolean values">Booleans</button>
-                <button class="filter-btn" data-filter="objects" title="Show only object/array values">Objects</button>
+            <div class="json-filters btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary active" data-filter="all" title="Show all configurations">All</button>
+                <button class="btn btn-outline-secondary" data-filter="modified" title="Show only modified configurations">Modified</button>
+                <button class="btn btn-outline-secondary" data-filter="numbers" title="Show only numeric values">Numbers</button>
+                <button class="btn btn-outline-secondary" data-filter="strings" title="Show only string values">Strings</button>
+                <button class="btn btn-outline-secondary" data-filter="booleans" title="Show only boolean values">Booleans</button>
+                <button class="btn btn-outline-secondary" data-filter="objects" title="Show only object/array values">Objects</button>
             </div>
-            <div class="json-actions">
-                <button class="action-btn" onclick="expandAllJson('${selector}')" title="Expand all nodes">Expand All</button>
-                <button class="action-btn" onclick="collapseAllJson('${selector}')" title="Collapse all nodes">Collapse All</button>
+            <div class="json-actions btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="expandAllJson('${selector}')" title="Expand all nodes">Expand All</button>
+                <button class="btn btn-outline-primary" onclick="collapseAllJson('${selector}')" title="Collapse all nodes">Collapse All</button>
             </div>
         </div>
     `;
@@ -280,7 +280,7 @@ function make_jsonview(json, selector, options = {}) {
     });
 
     // Add filter functionality
-    const filterBtns = wrapper.querySelectorAll('.filter-btn');
+    const filterBtns = wrapper.querySelectorAll('.json-filters .btn');
     filterBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             filterBtns.forEach(b => b.classList.remove('active'));

@@ -1,99 +1,156 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger protocol visualizer - Spalten auswählen</title>
+    <title>WARP Charger Protokoll-Visualisierer - Spalten auswählen</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
-    <div class="config-container">
-        <h1>Spalten für Visualisierung auswählen</h1>
+    <!-- Theme Toggle -->
+    <div class="theme-toggle">
+        <button class="btn btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
+            <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+            <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
+        </button>
+    </div>
 
-        <div class="column-selection">
-            <div class="search-container">
-                <input type="text" id="column-search" placeholder="Spalten durchsuchen..." onkeyup="filter_columns()">
-            </div>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">Spalten für Visualisierung auswählen</h1>
 
-            <div class="column-controls">
-                <button onclick="toggle_all_columns(true)">Alle auswählen</button>
-                <button onclick="toggle_all_columns(false)">Alle abwählen</button>
-                <button onclick="select_default_columns()">Standard-Auswahl</button>
-                <span id="column-count"></span>
-            </div>
-
-            <div class="columns-grid" id="column-checkboxes">
-                {% for column in data.column_metadata %}
-                <div class="column-item" data-column="{{ column.name }}">
-                    <input type="checkbox"
-                           id="col-{{ loop.index }}"
-                           data-column="{{ column.name }}"
-                           {% if not column.hidden_by_default %}checked{% endif %}>
-                    <label for="col-{{ loop.index }}" title="{{ column.name }}">
-                        <span class="column-label">{{ column.label }}</span>
-                        {% if column.predefined %}
-                        <span class="predefined-badge">Standard</span>
-                        {% endif %}
-                    </label>
+        <!-- Column Selection Card -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <!-- Search -->
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="column-search" placeholder="Spalten durchsuchen..." onkeyup="filter_columns()">
                 </div>
-                {% endfor %}
+
+                <!-- Controls -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggle_all_columns(true)">
+                        <i class="bi bi-check-all"></i> Alle auswählen
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggle_all_columns(false)">
+                        <i class="bi bi-x-lg"></i> Alle abwählen
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="select_default_columns()">
+                        <i class="bi bi-arrow-counterclockwise"></i> Standard-Auswahl
+                    </button>
+                    <span id="column-count" class="text-secondary small ms-auto"></span>
+                </div>
+
+                <!-- Columns Grid -->
+                <div class="columns-grid border rounded p-3 bg-body-tertiary mb-3" id="column-checkboxes">
+                    {% for column in data.column_metadata %}
+                    <div class="column-item" data-column="{{ column.name }}">
+                        <input type="checkbox" class="form-check-input"
+                               id="col-{{ loop.index }}"
+                               data-column="{{ column.name }}"
+                               {% if not column.hidden_by_default %}checked{% endif %}>
+                        <label for="col-{{ loop.index }}" title="{{ column.name }}">
+                            <span class="column-label">{{ column.label }}</span>
+                            {% if column.predefined %}
+                            <span class="predefined-badge badge bg-secondary">Standard</span>
+                            {% endif %}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    <button class="btn btn-primary" onclick="view_chart()">
+                        <i class="bi bi-graph-up"></i> Chart anzeigen
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="copy_link()">
+                        <i class="bi bi-link-45deg"></i> Link kopieren
+                    </button>
+                </div>
+
+                <!-- Shareable Link -->
+                <div class="bg-body-tertiary rounded p-3">
+                    <label for="shareable-url" class="form-label fw-semibold">Teilbarer Link:</label>
+                    <input type="text" class="form-control font-monospace" id="shareable-url" readonly onclick="this.select()">
+                </div>
             </div>
+        </div>
 
-            <div class="action-buttons">
-                <button class="primary-button" onclick="view_chart()">Chart anzeigen</button>
-                <button class="secondary-button" onclick="copy_link()">Link kopieren</button>
+        <!-- Tabs -->
+        <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
+                    Konfiguration vor dem Ladeprotokoll
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
+                    Konfiguration nach dem Ladeprotokoll
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
+                    Log vor dem Ladeprotokoll
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
+                    Log nach dem Ladeprotokoll
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content border border-top-0 rounded-bottom">
+            <div class="tab-pane fade show active p-3" id="before-protocol-json" role="tabpanel">
             </div>
-
-            <div class="shareable-link">
-                <h4>Teilbarer Link:</h4>
-                <input type="text" id="shareable-url" readonly onclick="this.select()">
+            <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
             </div>
-        </div>
-
-        <div class="tab">
-            <button class="tablinks active" onclick="open_tab(event, 'before-protocol-json')">Konfiguration vor dem Ladeprotokoll</button>
-            <button class="tablinks" onclick="open_tab(event, 'after-protocol-json')">Konfiguration nach dem Ladeprotokoll</button>
-            <button class="tablinks" onclick="open_tab(event, 'before-protocol-log')">Log vor dem Ladeprotokoll</button>
-            <button class="tablinks" onclick="open_tab(event, 'after-protocol-log')">Log nach dem Ladeprotokoll</button>
-        </div>
-
-        <div id="before-protocol-json" class="tabcontent" style="display:block;">
-        </div>
-        <div id="after-protocol-json" class="tabcontent">
-        </div>
-        <div id="before-protocol-log" class="tabcontent">
-            <textarea id="before-protocol-log-text" rows="30" readonly>{{ data.before_protocol_log }}</textarea>
-        </div>
-        <div id="after-protocol-log" class="tabcontent">
-            <textarea id="after-protocol-log-text" rows="30" readonly>{{ data.after_protocol_log }}</textarea>
+            <div class="tab-pane fade p-3" id="before-protocol-log" role="tabpanel">
+                <textarea id="before-protocol-log-text" class="form-control log-textarea" rows="20" readonly>{{ data.before_protocol_log }}</textarea>
+            </div>
+            <div class="tab-pane fade p-3" id="after-protocol-log" role="tabpanel">
+                <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="20" readonly>{{ data.after_protocol_log }}</textarea>
+            </div>
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
         const uuid = "{{ data.uuid }}";
         let data = {{ data | tojson }};
 
-        function open_tab(evt, tab) {
-            var i, tabcontent, tablinks;
-
-            // Get all elements with class="tabcontent" and hide them
-            tabcontent = document.getElementsByClassName("tabcontent");
-            for (i = 0; i < tabcontent.length; i++) {
-                tabcontent[i].style.display = "none";
-            }
-
-            // Get all elements with class="tablinks" and remove the class "active"
-            tablinks = document.getElementsByClassName("tablinks");
-            for (i = 0; i < tablinks.length; i++) {
-                tablinks[i].className = tablinks[i].className.replace(" active", "");
-            }
-
-            // Show the current tab, and add an "active" class to the button that opened the tab
-            document.getElementById(tab).style.display = "block";
-            evt.currentTarget.className += " active";
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
         }
+
+        function updateThemeIcon(theme) {
+            const lightIcon = document.getElementById('theme-icon-light');
+            const darkIcon = document.getElementById('theme-icon-dark');
+            if (theme === 'dark') {
+                lightIcon.classList.add('d-none');
+                darkIcon.classList.remove('d-none');
+            } else {
+                lightIcon.classList.remove('d-none');
+                darkIcon.classList.add('d-none');
+            }
+        }
+
+        // Load saved theme
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        })();
 
         function filter_columns() {
             const searchTerm = document.getElementById('column-search').value.toLowerCase();
@@ -123,7 +180,7 @@
         }
 
         function toggle_all_columns(select) {
-            const checkboxes = document.querySelectorAll('#column-checkboxes input[type="checkbox"]:not([style*="display: none"])');
+            const checkboxes = document.querySelectorAll('#column-checkboxes input[type="checkbox"]');
             checkboxes.forEach(checkbox => {
                 if (checkbox.closest('.column-item').style.display !== 'none') {
                     checkbox.checked = select;
@@ -135,11 +192,7 @@
         function select_default_columns() {
             const checkboxes = document.querySelectorAll('#column-checkboxes input[type="checkbox"]');
             checkboxes.forEach(checkbox => {
-                const columnItem = checkbox.closest('.column-item');
-                const isPredefined = columnItem.querySelector('.predefined-badge') !== null;
                 const columnName = checkbox.dataset.column;
-
-                // Find the column metadata
                 const columnMeta = data.column_metadata.find(col => col.name === columnName);
                 checkbox.checked = columnMeta && !columnMeta.hidden_by_default;
             });
@@ -171,16 +224,19 @@
         function copy_link() {
             const urlField = document.getElementById('shareable-url');
             urlField.select();
-            urlField.setSelectionRange(0, 99999); // For mobile devices
-            document.execCommand('copy');
-
-            // Visual feedback
-            const button = event.target;
-            const originalText = button.textContent;
-            button.textContent = 'Kopiert!';
-            setTimeout(() => {
-                button.textContent = originalText;
-            }, 2000);
+            urlField.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(urlField.value).then(() => {
+                const button = event.target.closest('button');
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="bi bi-check"></i> Kopiert!';
+                button.classList.add('btn-success');
+                button.classList.remove('btn-outline-secondary');
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-outline-secondary');
+                }, 2000);
+            });
         }
 
         function make_jsonview(json, selector) {
@@ -203,17 +259,25 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            // Add event listeners to checkboxes
             const checkboxes = document.querySelectorAll('#column-checkboxes input[type="checkbox"]');
             checkboxes.forEach(checkbox => {
                 checkbox.addEventListener('change', update_url);
             });
 
-            // Initialize JSON views
+            // Check if there's a 'selected' parameter in the URL (from "Spalten ändern" button)
+            // and apply it to restore the previous selection
+            const urlParams = new URLSearchParams(window.location.search);
+            const selectedParam = urlParams.get('selected');
+            if (selectedParam) {
+                const selectedColumns = decodeURIComponent(selectedParam).split(',');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = selectedColumns.includes(checkbox.dataset.column);
+                });
+            }
+
             make_jsonview(data.before_protocol_json, '#before-protocol-json');
             make_jsonview(data.after_protocol_json, '#after-protocol-json');
 
-            // Initialize count and URL
             update_column_count(data.column_metadata.length, data.column_metadata.length);
             update_url();
         });

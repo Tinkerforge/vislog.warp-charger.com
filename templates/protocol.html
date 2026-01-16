@@ -1,10 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger protocol visualizer</title>
+    <title>WARP Charger Protokoll-Visualisierer</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
     <script src="{{ url_for('static', filename='vislog.js') }}"></script>
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
@@ -12,63 +14,153 @@
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
-    <div class="controls">
-        <div class="chart-info">
-            <div class="chart-header">
-                <h4>Angezeigte Spalten ({{ data.selected_column_labels|length }}):</h4>
-                <div class="chart-controls">
-                    <label for="log-axis" class="axis-control" onchange="log_axis_clicked();">
-                        <input type="checkbox" id="log-axis" name="log-axis" checked/>
-                        Y-Achse logarithmisch
-                    </label>
-                    <button onclick="reset_zoom()" class="zoom-reset-btn" title="Zur ursprünglichen Ansicht zurückkehren">Zoom zurücksetzen</button>
-                    <a href="javascript:void(0)" onclick="go_back_to_config()" class="config-link">Spalten ändern</a>
+    <!-- Controls Bar -->
+    <div class="controls-bar bg-body-secondary border-bottom p-3">
+        <div class="d-flex flex-wrap align-items-start gap-3">
+            <div class="card flex-grow-1">
+                <div class="card-body p-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <h6 class="card-title mb-0">Angezeigte Spalten ({{ data.selected_column_labels|length }})</h6>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input" type="checkbox" id="log-axis" checked onchange="log_axis_clicked();">
+                                <label class="form-check-label small" for="log-axis">Y-Achse logarithmisch</label>
+                            </div>
+                            <button onclick="reset_zoom()" class="btn btn-sm btn-outline-secondary" title="Zur ursprünglichen Ansicht zurückkehren">
+                                <i class="bi bi-arrows-angle-expand"></i> Zoom zurücksetzen
+                            </button>
+                            <a href="javascript:void(0)" onclick="go_back_to_config()" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-gear"></i> Spalten ändern
+                            </a>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
+                                <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+                                <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="column-tags">
+                        {% for label in data.selected_column_labels %}
+                        <span class="column-tag badge bg-secondary">{{ label }}</span>
+                        {% endfor %}
+                    </div>
                 </div>
-            </div>
-            <div class="selected-columns">
-                {% for label in data.selected_column_labels %}
-                <span class="column-tag">{{ label }}</span>
-                {% endfor %}
             </div>
         </div>
     </div>
 
-    <div style="height: 75vh; width: 100%;">
+    <!-- Chart -->
+    <div class="chart-container p-2">
         <canvas id="warp_chart"></canvas>
     </div>
+    <div class="zoom-hint text-center text-secondary bg-body-tertiary border-top py-2">
+        <i class="bi bi-info-circle"></i> Ziehen zum Zoomen | Strg + Ziehen zum Verschieben
+    </div>
 
-    <div class="tab">
-        <button class="tablinks active" onclick="open_tab(event, 'before-protocol-json')">Konfiguration vor dem Ladeprotokoll</button>
-        <button class="tablinks" onclick="open_tab(event, 'after-protocol-json')">Konfiguration nach dem Ladeprotokoll</button>
-        <button class="tablinks" onclick="open_tab(event, 'before-protocol-log')">Log vor dem Ladeprotokoll</button>
-        <button class="tablinks" onclick="open_tab(event, 'after-protocol-log')">Log nach dem Ladeprotokoll</button>
+    <!-- Tabs -->
+    <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
+                Konfiguration vor dem Ladeprotokoll
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
+                Konfiguration nach dem Ladeprotokoll
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
+                Log vor dem Ladeprotokoll
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
+                Log nach dem Ladeprotokoll
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom">
+        <div class="tab-pane fade show active p-3" id="before-protocol-json" role="tabpanel">
+        </div>
+        <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
+        </div>
+        <div class="tab-pane fade p-3" id="before-protocol-log" role="tabpanel">
+            <textarea id="before-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
+        </div>
+        <div class="tab-pane fade p-3" id="after-protocol-log" role="tabpanel">
+            <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
+        </div>
     </div>
-    <div id="before-protocol-json" class="tabcontent" style="display:block;">
-    </div>
-    <div id="after-protocol-json" class="tabcontent">
-    </div>
-    <div id="before-protocol-log" class="tabcontent">
-        <textarea id="before-protocol-log-text" rows="50">
-        </textarea>
-    </div>
-    <div id="after-protocol-log" class="tabcontent">
-        <textarea id="after-protocol-log-text" rows="50">
-        </textarea>
-    </div>
+
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
         let data = {{ data | tojson}};
 
         function go_back_to_config() {
-            // Extract UUID from current URL
             const pathParts = window.location.pathname.split('/');
             const uuid = pathParts[1];
-            window.location.href = '/' + uuid;
+            // Pass the current configuration as 'selected' param (not 'configuration')
+            // so the config page can restore the selection without triggering chart view
+            const currentConfig = new URLSearchParams(window.location.search).get('configuration');
+            if (currentConfig) {
+                window.location.href = '/' + uuid + '?selected=' + encodeURIComponent(currentConfig);
+            } else {
+                window.location.href = '/' + uuid;
+            }
         }
 
-        vislog_protocol(data)
-    </script>
-</body>
-</html>
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-bs-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-bs-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+            updateChartTheme(newTheme);
+        }
+
+        function updateThemeIcon(theme) {
+            const lightIcon = document.getElementById('theme-icon-light');
+            const darkIcon = document.getElementById('theme-icon-dark');
+            if (theme === 'dark') {
+                lightIcon.classList.add('d-none');
+                darkIcon.classList.remove('d-none');
+            } else {
+                lightIcon.classList.remove('d-none');
+                darkIcon.classList.add('d-none');
+            }
+        }
+
+        function updateChartTheme(theme) {
+            if (typeof chart !== 'undefined' && chart) {
+                const textColor = theme === 'dark' ? '#f0f0f0' : '#212529';
+                const gridColor = theme === 'dark' ? '#3a3a3a' : '#dee2e6';
+
+                chart.options.scales.x.ticks.color = textColor;
+                chart.options.scales.x.grid.color = gridColor;
+                chart.options.scales.y.ticks.color = textColor;
+                chart.options.scales.y.grid.color = gridColor;
+                chart.options.plugins.title.color = textColor;
+                chart.options.plugins.legend.labels.color = textColor;
+                chart.update();
+            }
+        }
+
+        // Load saved theme
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        })();
+
+        // Initialize after DOM loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            vislog_protocol(data);
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            setTimeout(() => updateChartTheme(savedTheme), 100);
+        });
     </script>
 </body>
 </html>
