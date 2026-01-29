@@ -32,11 +32,20 @@
                 <i class="bi bi-journal-text"></i> Ereignis-Log
             </button>
         </li>
+        {% if data.report_trace %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" type="button" role="tab">
                 <i class="bi bi-bug"></i> Trace-Log
             </button>
         </li>
+        {% endif %}
+        {% for module_name, module_content in data.trace_modules.items() %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" type="button" role="tab">
+                <i class="bi bi-code-square"></i> {{ module_name }}
+            </button>
+        </li>
+        {% endfor %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" type="button" role="tab">
                 <i class="bi bi-file-binary"></i> Coredump
@@ -50,9 +59,16 @@
         <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
             <textarea id="report-log-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>
+        {% if data.report_trace %}
         <div class="tab-pane fade p-3" id="report-trace" role="tabpanel">
             <textarea id="report-trace-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>
+        {% endif %}
+        {% for module_name, module_content in data.trace_modules.items() %}
+        <div class="tab-pane fade p-3" id="trace-{{ module_name }}" role="tabpanel">
+            <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly>{{ module_content }}</textarea>
+        </div>
+        {% endfor %}
         <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
             <textarea id="report-dump-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>

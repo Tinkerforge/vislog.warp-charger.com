@@ -232,16 +232,48 @@ def handle_report(data):
         elif inside_dump:
             report_dump_blocks.append(block)
 
-    if len(report_trace_blocks) == 0:
-        report_trace_blocks.append('Es befindet sich kein Trace-Log im Debug-Report')
-
     if len(report_dump_blocks) == 0:
         report_dump_blocks.append('Es befindet sich kein Coredump im Debug-Report')
+
+    # Parse module sections from trace log
+    # Sections are delimited by __begin_MODULE__ and __end_MODULE__
+    trace_modules = {}
+    trace_remaining = []
+    full_trace = '\n\n'.join(report_trace_blocks)
+
+    # Find all module sections using regex
+    module_pattern = re.compile(r'__begin_(\w+)__(.*?)__end_\1__', re.DOTALL)
+    last_end = 0
+
+    for match in module_pattern.finditer(full_trace):
+        module_name = match.group(1)
+        module_content = match.group(2).strip()
+
+        # Collect text before this module (not part of any module)
+        before_text = full_trace[last_end:match.start()].strip()
+        if before_text:
+            trace_remaining.append(before_text)
+
+        if module_content:
+            trace_modules[module_name] = module_content
+
+        last_end = match.end()
+
+    # Collect any remaining text after the last module
+    after_text = full_trace[last_end:].strip()
+    if after_text:
+        trace_remaining.append(after_text)
+
+    # If no modules found, use the full trace as remaining
+    if not trace_modules and not trace_remaining:
+        if report_trace_blocks and report_trace_blocks[0] != 'Es befindet sich kein Trace-Log im Debug-Report':
+            trace_remaining = [full_trace]
 
     data = {
         'report_json':  report_json,
         'report_log':   report_log,
-        'report_trace': '\n\n'.join(report_trace_blocks),
+        'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
+        'trace_modules': trace_modules,
         'report_dump':  '\n\n'.join(report_dump_blocks),
     }
 
