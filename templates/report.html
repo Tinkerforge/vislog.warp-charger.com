@@ -70,7 +70,113 @@
         </div>
         {% endfor %}
         <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
-            <textarea id="report-dump-text" class="form-control log-textarea" rows="40" readonly></textarea>
+            {% if data.coredump_info.has_coredump %}
+            <div class="row">
+                <div class="col-lg-6">
+                    <!-- Firmware Info Card -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="bi bi-cpu"></i> Firmware Information
+                        </div>
+                        <div class="card-body">
+                            {% if data.coredump_info.firmware_name %}
+                            <div class="mb-2">
+                                <strong>Firmware:</strong>
+                                <code>{{ data.coredump_info.firmware_name }}</code>
+                            </div>
+                            {% endif %}
+                            {% if data.coredump_info.firmware_commit_id %}
+                            <div class="mb-2">
+                                <strong>Commit:</strong>
+                                <code>{{ data.coredump_info.firmware_commit_id }}</code>
+                            </div>
+                            {% endif %}
+                            {% if data.coredump_info.crashed_task_handle %}
+                            <div>
+                                <strong>Crashed Task Handle:</strong>
+                                <code>{{ data.coredump_info.crashed_task_handle }}</code>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Exception Cause Card -->
+                    {% if data.coredump_info.exception_cause %}
+                    <div class="card mb-3 border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <i class="bi bi-exclamation-triangle"></i> Exception Cause
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <strong>Code:</strong>
+                                <code>{{ data.coredump_info.exception_cause.code }}</code>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Name:</strong>
+                                <span class="badge bg-danger">{{ data.coredump_info.exception_cause.name }}</span>
+                            </div>
+                            <div>
+                                <strong>Description:</strong>
+                                <p class="mb-0 mt-1 text-body-secondary">{{ data.coredump_info.exception_cause.description }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-lg-6">
+                    <!-- Registers Card -->
+                    {% if data.coredump_info.registers %}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="bi bi-list-ol"></i> Registers
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Register</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for reg_name, reg_value in data.coredump_info.registers.items() %}
+                                    <tr>
+                                        <td><code>{{ reg_name }}</code></td>
+                                        <td><code>{{ reg_value }}</code></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Error Card (if any) -->
+                    {% if data.coredump_info.error %}
+                    <div class="card mb-3 border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <i class="bi bi-exclamation-circle"></i> Parsing Warning
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-0">{{ data.coredump_info.error }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Info about local GDB analysis -->
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i>
+                <strong>Hinweis:</strong> Für eine vollständige Stack-Trace-Analyse mit GDB kann das
+                <code>coredump.py</code>-Skript aus dem esp32-firmware Repository verwendet werden.
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle"></i> Es befindet sich kein Coredump im Debug-Report.
+            </div>
+            {% endif %}
         </div>
     </div>
 

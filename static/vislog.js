@@ -508,7 +508,7 @@ function reset_zoom() {
         traceText.value = data.report_trace;
     }
 
-    document.getElementById('report-dump-text').value = data.report_dump;
+    // Coredump is now rendered server-side, no JS needed
 
     // Store tree reference for report JSON
     setTimeout(() => {

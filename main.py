@@ -203,6 +203,169 @@ def view_chart(uuid):
         config_param = request.args.get('configuration', '')
         return handle_protocol_chart(data, config_param)
 
+# Coredump parsing constants and helpers (based on esp32-firmware/software/coredump.py)
+TF_COREDUMP_PREFIX = b"___tf_coredump_info_start___"
+TF_COREDUMP_SUFFIX = b"___tf_coredump_info_end___"
+EXTRA_INFO_HEADER = b'\xA5\x02\x00\x00ESP_EXTRA_INFO'
+
+# Exception cause dictionary from Xtensa ISA Reference Manual
+XTENSA_EXCEPTION_CAUSE_DICT = {
+    0: ('IllegalInstructionCause', 'Illegal instruction'),
+    1: ('SyscallCause', 'SYSCALL instruction'),
+    2: ('InstructionFetchErrorCause', 'Processor internal physical address or data error during instruction fetch'),
+    3: ('LoadStoreErrorCause', 'Processor internal physical address or data error during load or store'),
+    4: ('Level1InterruptCause', 'Level-1 interrupt as indicated by set level-1 bits in the INTERRUPT register'),
+    5: ('AllocaCause', 'MOVSP instruction, if caller\'s registers are not in the register file'),
+    6: ('IntegerDivideByZeroCause', 'QUOS, QUOU, REMS, or REMU divisor operand is zero'),
+    8: ('PrivilegedCause', 'Attempt to execute a privileged operation when CRING != 0'),
+    9: ('LoadStoreAlignmentCause', 'Load or store to an unaligned address'),
+    12: ('InstrPIFDataErrorCause', 'PIF data error during instruction fetch'),
+    13: ('LoadStorePIFDataErrorCause', 'Synchronous PIF data error during LoadStore access'),
+    14: ('InstrPIFAddrErrorCause', 'PIF address error during instruction fetch'),
+    15: ('LoadStorePIFAddrErrorCause', 'Synchronous PIF address error during LoadStore access'),
+    16: ('InstTLBMissCause', 'Error during Instruction TLB refill'),
+    17: ('InstTLBMultiHitCause', 'Multiple instruction TLB entries matched'),
+    18: ('InstFetchPrivilegeCause', 'An instruction fetch referenced a virtual address at a ring level less than CRING'),
+    20: ('InstFetchProhibitedCause', 'An instruction fetch referenced a page mapped with an attribute that does not permit instruction fetch'),
+    24: ('LoadStoreTLBMissCause', 'Error during TLB refill for a load or store'),
+    25: ('LoadStoreTLBMultiHitCause', 'Multiple TLB entries matched for a load or store'),
+    26: ('LoadStorePrivilegeCause', 'A load or store referenced a virtual address at a ring level less than CRING'),
+    28: ('LoadProhibitedCause', 'A load referenced a page mapped with an attribute that does not permit loads'),
+    29: ('StoreProhibitedCause', 'A store referenced a page mapped with an attribute that does not permit stores'),
+    32: ('Coprocessor0Disabled', 'Coprocessor 0 instruction when cp0 disabled'),
+    33: ('Coprocessor1Disabled', 'Coprocessor 1 instruction when cp1 disabled'),
+    34: ('Coprocessor2Disabled', 'Coprocessor 2 instruction when cp2 disabled'),
+    35: ('Coprocessor3Disabled', 'Coprocessor 3 instruction when cp3 disabled'),
+    36: ('Coprocessor4Disabled', 'Coprocessor 4 instruction when cp4 disabled'),
+    37: ('Coprocessor5Disabled', 'Coprocessor 5 instruction when cp5 disabled'),
+    38: ('Coprocessor6Disabled', 'Coprocessor 6 instruction when cp6 disabled'),
+    39: ('Coprocessor7Disabled', 'Coprocessor 7 instruction when cp7 disabled'),
+    0xFFFF: ('InvalidCauseRegister', 'Invalid EXCCAUSE register value or current task is broken and was skipped'),
+    # ESP panic pseudo reasons (XCHAL_EXCCAUSE_NUM = 64)
+    64: ('UnknownException', 'Unknown exception'),
+    65: ('DebugException', 'Unhandled debug exception'),
+    66: ('DoubleException', 'Double exception'),
+    67: ('KernelException', 'Unhandled kernel exception'),
+    68: ('CoprocessorException', 'Coprocessor exception'),
+    69: ('InterruptWDTTimeoutCPU0', 'Interrupt watchdog timeout on CPU0'),
+    70: ('InterruptWDTTimeoutCPU1', 'Interrupt watchdog timeout on CPU1'),
+    71: ('CacheError', 'Cache disabled but cached memory region accessed'),
+}
+
+def extra_info_reg_name(reg):
+    return {
+        232: 'EXCCAUSE',
+        238: 'EXCVADDR',
+        177: 'EPC1',
+        178: 'EPC2',
+        179: 'EPC3',
+        180: 'EPC4',
+        181: 'EPC5',
+        182: 'EPC6',
+        183: 'EPC7',
+        194: 'EPS2',
+        195: 'EPS3',
+        196: 'EPS4',
+        197: 'EPS5',
+        198: 'EPS6',
+        199: 'EPS7'
+    }.get(reg, None)
+
+def parse_coredump(coredump_blocks):
+    """
+    Parse coredump data from debug report blocks.
+    Returns a dictionary with parsed information or None if no valid coredump.
+    """
+    import base64
+
+    result = {
+        'has_coredump': False,
+        'firmware_name': None,
+        'firmware_commit_id': None,
+        'crashed_task_handle': None,
+        'exception_cause': None,
+        'registers': {},
+        'raw_dump': None,
+        'error': None
+    }
+
+    # Join blocks and extract base64 data
+    raw_text = '\n\n'.join(coredump_blocks)
+
+    # Check for "no coredump" message
+    if 'Es befindet sich kein Coredump' in raw_text:
+        return result
+
+    # Extract base64 data (format: data:application/octet-stream;base64,...)
+    try:
+        if 'base64,' in raw_text:
+            b64_data = raw_text.split('base64,')[-1].strip()
+            coredump_bytes = base64.b64decode(b64_data)
+
+            # Fix ELF header if needed
+            if not coredump_bytes.startswith(b'\x7fELF'):
+                coredump_bytes = b'\x7fELF' + coredump_bytes
+
+            result['has_coredump'] = True
+            result['raw_dump'] = raw_text
+        else:
+            result['error'] = 'No base64 data found in coredump'
+            return result
+    except Exception as e:
+        result['error'] = f'Failed to decode base64: {str(e)}'
+        return result
+
+    # Extract TF coredump info JSON
+    try:
+        start_idx = coredump_bytes.find(TF_COREDUMP_PREFIX)
+        if start_idx >= 0:
+            end_idx = coredump_bytes.find(TF_COREDUMP_SUFFIX, start_idx)
+            if end_idx >= 0:
+                tf_json_bytes = coredump_bytes[start_idx + len(TF_COREDUMP_PREFIX):end_idx]
+                tf_data = json.loads(tf_json_bytes.decode('utf-8', errors='ignore'))
+
+                result['firmware_name'] = tf_data.get('firmware_file_name')
+                result['firmware_commit_id'] = tf_data.get('firmware_commit_id')
+    except Exception as e:
+        result['error'] = f'Failed to parse TF coredump info: {str(e)}'
+
+    # Extract ESP32 extra info (registers)
+    try:
+        extra_info_idx = coredump_bytes.find(EXTRA_INFO_HEADER)
+        if extra_info_idx >= 0 and (len(coredump_bytes) - extra_info_idx >= len(EXTRA_INFO_HEADER) + 2 + 108):
+            # Skip header and two bytes
+            extra_info_idx += len(EXTRA_INFO_HEADER) + 2
+            extra_info = coredump_bytes[extra_info_idx:extra_info_idx + 108]
+
+            # First 4 bytes are crashed task handle
+            result['crashed_task_handle'] = hex(int.from_bytes(extra_info[:4], byteorder='little'))
+
+            # Parse register values
+            for i in range(4, len(extra_info), 8):
+                reg_id = int.from_bytes(extra_info[i:i+4], byteorder='little')
+                if reg_id == 0:
+                    continue
+
+                reg_value = int.from_bytes(extra_info[i+4:i+8], byteorder='little')
+                reg_name = extra_info_reg_name(reg_id)
+
+                if reg_name:
+                    result['registers'][reg_name] = hex(reg_value)
+
+                    # If this is EXCCAUSE, also add the exception description
+                    if reg_name == 'EXCCAUSE' and reg_value in XTENSA_EXCEPTION_CAUSE_DICT:
+                        cause_name, cause_desc = XTENSA_EXCEPTION_CAUSE_DICT[reg_value]
+                        result['exception_cause'] = {
+                            'code': reg_value,
+                            'name': cause_name,
+                            'description': cause_desc
+                        }
+    except Exception as e:
+        if not result['error']:
+            result['error'] = f'Failed to parse ESP32 extra info: {str(e)}'
+
+    return result
+
 def handle_report(data):
     try:
         # Fix json syntax error that can happen in report
@@ -269,12 +432,15 @@ def handle_report(data):
         if report_trace_blocks and report_trace_blocks[0] != 'Es befindet sich kein Trace-Log im Debug-Report':
             trace_remaining = [full_trace]
 
+    # Parse coredump for structured display
+    coredump_info = parse_coredump(report_dump_blocks)
+
     data = {
         'report_json':  report_json,
         'report_log':   report_log,
         'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
         'trace_modules': trace_modules,
-        'report_dump':  '\n\n'.join(report_dump_blocks),
+        'coredump_info': coredump_info,
     }
 
     # Render the protocol with syntax highlighting
