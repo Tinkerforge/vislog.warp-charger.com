@@ -14,6 +14,15 @@
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
+    {% if data.dropped_lines_count %}
+    <!-- Warning banner for truncated CSV data -->
+    <div class="alert alert-warning alert-dismissible fade show m-2" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <strong>Achtung:</strong> {{ data.dropped_lines_count }} Zeilen wurden aus den CSV-Daten entfernt. Das Ladeprotokoll ist unvollständig.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
     <!-- Controls Bar -->
     <div class="controls-bar bg-body-secondary border-bottom p-3">
         <div class="d-flex flex-wrap align-items-start gap-3">

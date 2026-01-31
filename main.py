@@ -97,6 +97,34 @@ chart_config = [{
     'hidden':    True
 }]
 
+def read_and_preprocess_protocol(file_path):
+    """
+    Read a protocol file and preprocess it to handle truncated CSV data.
+
+    When the charge log gets too long, a message like
+    "105636 lines have been dropped from the following table."
+    is inserted before the CSV data. This function removes that message
+    and returns the number of dropped lines (if any).
+
+    Returns:
+        tuple: (data_blocks, dropped_lines_count)
+            - data_blocks: list of strings split by '\n\n'
+            - dropped_lines_count: int or None if no lines were dropped
+    """
+    content = open(file_path, 'r').read()
+
+    # Check for "X lines have been dropped from the following table." message
+    dropped_lines_match = re.search(r'\n\n(\d+) lines have been dropped from the following table\.', content)
+    dropped_lines_count = None
+
+    if dropped_lines_match:
+        dropped_lines_count = int(dropped_lines_match.group(1))
+        # Remove the message from content
+        content = re.sub(r'\n\n\d+ lines have been dropped from the following table\.', '', content)
+
+    data = content.split('\n\n')
+    return data, dropped_lines_count
+
 def extract_real_timestamp(before_protocol_log, first_millis):
     if not before_protocol_log or first_millis is None:
         return None
@@ -167,7 +195,7 @@ def view_id(uuid):
     if not os.path.exists(file_path):
         abort(404)  # Return a 404 error if the protocol does not exist
 
-    data = open(file_path, 'r').read().split('\n\n')
+    data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
         is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
     except:
@@ -179,9 +207,9 @@ def view_id(uuid):
         # Check if configuration parameter is provided
         config_param = request.args.get('configuration')
         if config_param:
-            return handle_protocol_chart(data, config_param)
+            return handle_protocol_chart(data, config_param, dropped_lines_count)
         else:
-            return handle_protocol_config(data, uuid)
+            return handle_protocol_config(data, uuid, dropped_lines_count)
 
 # Route to show the chart with selected columns
 @app.route('/<uuid>/chart')
@@ -191,7 +219,7 @@ def view_chart(uuid):
     if not os.path.exists(file_path):
         abort(404)  # Return a 404 error if the protocol does not exist
 
-    data = open(file_path, 'r').read().split('\n\n')
+    data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
         is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
     except:
@@ -201,7 +229,7 @@ def view_chart(uuid):
         return handle_report(data)
     else:
         config_param = request.args.get('configuration', '')
-        return handle_protocol_chart(data, config_param)
+        return handle_protocol_chart(data, config_param, dropped_lines_count)
 
 # Coredump parsing constants and helpers (based on esp32-firmware/software/coredump.py)
 TF_COREDUMP_PREFIX = b"___tf_coredump_info_start___"
@@ -506,7 +534,7 @@ def parse_protocol_data(data):
         'has_real_timestamps': timestamp_info is not None
     }
 
-def handle_protocol_config(data, uuid):
+def handle_protocol_config(data, uuid, dropped_lines_count=None):
     # Show configuration page where user can select columns
     parsed = parse_protocol_data(data)
 
@@ -554,11 +582,12 @@ def handle_protocol_config(data, uuid):
         'after_protocol_json': parsed['after_protocol_json'],
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
+        'dropped_lines_count': dropped_lines_count,
     }
 
     return render_template('protocol_config.html', data=config_data)
 
-def handle_protocol_chart(data, config_param):
+def handle_protocol_chart(data, config_param, dropped_lines_count=None):
     # Show chart with only selected columns
     parsed = parse_protocol_data(data)
 
@@ -632,6 +661,7 @@ def handle_protocol_chart(data, config_param):
         'after_protocol_json': parsed['after_protocol_json'],
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
+        'dropped_lines_count': dropped_lines_count,
     }
 
     # Render the protocol with syntax highlighting

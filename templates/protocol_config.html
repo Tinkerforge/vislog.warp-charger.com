@@ -21,6 +21,15 @@
     </div>
 
     <div class="container py-4">
+        {% if data.dropped_lines_count %}
+        <!-- Warning banner for truncated CSV data -->
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <strong>Achtung:</strong> {{ data.dropped_lines_count }} Zeilen wurden aus den CSV-Daten entfernt. Das Ladeprotokoll ist unvollständig.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endif %}
+
         <h1 class="text-center mb-4">Spalten für Visualisierung auswählen</h1>
 
         <!-- Column Selection Card -->
