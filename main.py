@@ -296,21 +296,23 @@ def parse_coredump(coredump_blocks):
     if 'Es befindet sich kein Coredump' in raw_text:
         return result
 
-    # Extract base64 data (format: data:application/octet-stream;base64,...)
+    # Extract base64 data
     try:
         if 'base64,' in raw_text:
+            # Format: data:application/octet-stream;base64,...
             b64_data = raw_text.split('base64,')[-1].strip()
-            coredump_bytes = base64.b64decode(b64_data)
-
-            # Fix ELF header if needed
-            if not coredump_bytes.startswith(b'\x7fELF'):
-                coredump_bytes = b'\x7fELF' + coredump_bytes
-
-            result['has_coredump'] = True
-            result['raw_dump'] = raw_text
         else:
-            result['error'] = 'No base64 data found in coredump'
-            return result
+            # Raw base64 data (e.g., starts with ELF header: f0VMRg... = \x7fELF)
+            b64_data = raw_text.strip()
+
+        coredump_bytes = base64.b64decode(b64_data)
+
+        # Fix ELF header if needed
+        if not coredump_bytes.startswith(b'\x7fELF'):
+            coredump_bytes = b'\x7fELF' + coredump_bytes
+
+        result['has_coredump'] = True
+        result['raw_dump'] = raw_text
     except Exception as e:
         result['error'] = f'Failed to decode base64: {str(e)}'
         return result
