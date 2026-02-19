@@ -279,6 +279,11 @@ body {
   color: var(--bs-body-color) !important;
   font-family: var(--bs-font-monospace);
   font-size: 0.875rem;
+  padding-left: 1.25rem;
+}
+
+.json-container .line {
+  position: relative;
 }
 
 .json-container .json-key {
@@ -336,6 +341,91 @@ body {
   margin-left: 0.5rem;
 }
 
+/* API constant enum hints */
+.enum-hint {
+  color: var(--bs-secondary-color) !important;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* Unit abbreviation hints (shown inline after the value) */
+.unit-hint {
+  color: var(--bs-secondary-color) !important;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+/* Info button at the start of JSON lines */
+.field-info-btn {
+  position: absolute;
+  left: -1.15rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8rem;
+  color: var(--bs-info);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.field-info-btn:hover,
+.field-info-btn:focus {
+  opacity: 1;
+  color: var(--bs-primary);
+}
+
+/* Info popover styling */
+.field-info-popover {
+  max-width: 400px;
+  font-size: 0.8125rem;
+}
+
+.field-info-popover .popover-body {
+  padding: 0.75rem;
+}
+
+.field-info-body p {
+  margin-bottom: 0.375rem;
+}
+
+.field-info-body p:last-child {
+  margin-bottom: 0;
+}
+
+.field-info-desc {
+  line-height: 1.4;
+}
+
+.field-info-unit {
+  color: var(--bs-secondary-color);
+  font-size: 0.75rem;
+}
+
+.field-info-constants {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.field-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.25rem;
+}
+
+.field-info-table td {
+  padding: 0.125rem 0.375rem;
+  vertical-align: top;
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.field-info-val {
+  white-space: nowrap;
+  font-family: var(--bs-font-monospace);
+  color: var(--json-number);
+  font-weight: 500;
+  min-width: 3em;
+}
+
 /* Modified configuration highlighting */
 .modified-config {
   border-left: 3px solid var(--vislog-modified);
@@ -347,6 +437,45 @@ body {
 .important {
   background-color: rgba(220, 53, 69, 0.2) !important;
   border-left-color: var(--vislog-important) !important;
+}
+
+/* Legend for colored line highlights */
+.json-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--bs-secondary-color);
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.json-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.json-legend-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 0.85rem;
+  border-radius: 2px;
+}
+
+.json-legend-modified {
+  background-color: rgba(99, 102, 241, 0.15);
+  border-left: 3px solid var(--vislog-modified);
+}
+
+.json-legend-important {
+  background-color: rgba(220, 53, 69, 0.25);
+  border-left: 3px solid var(--vislog-important);
+}
+
+.json-legend-info-icon {
+  color: var(--bs-info);
+  font-size: 0.85rem;
 }
 
 /* --------------------------------------------------------------------------

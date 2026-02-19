@@ -267,8 +267,13 @@
                 });
             }
 
-            make_jsonview(data.before_protocol_json, '#before-protocol-json');
-            make_jsonview(data.after_protocol_json, '#after-protocol-json');
+            const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
+            const hwVersion = _detectHwVersion(protocolJson);
+            const jsonviewOpts = data.api_constants
+                ? { apiConstants: data.api_constants, hwVersion: hwVersion }
+                : {};
+            make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
+            make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
 
             update_column_count(data.column_metadata.length, data.column_metadata.length);
             update_url();

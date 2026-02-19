@@ -136,9 +136,184 @@ function create_column_selector(datasets) {
     update_column_count(datasets.length, datasets.length);
 }
 
+function _detectHwVersion(json) {
+    // Detect hardware version from report/protocol JSON.
+    // Returns the Version IntFlag value matching the api_doc_generator Version enum.
+    const VERSION_MAP = {
+        'warp':  1,  // WARP1
+        'warp2': 2,  // WARP2
+        'warp3': 4,  // WARP3
+        'wem':   8,  // WEM
+        'wem2':  16, // WEM2
+    };
+    const deviceType = json?.['info/name']?.type;
+    if (deviceType && VERSION_MAP[deviceType] !== undefined) {
+        return VERSION_MAP[deviceType];
+    }
+    return -1; // ANY
+}
+
+function _resolveFieldEntry(node, apiDocs) {
+    // Resolve the API doc entry for a leaf node.
+    // Returns {fieldEntry, apiPath} or null if not found.
+    const fieldKey = node.key;
+    if (fieldKey === undefined || fieldKey === null) return null;
+
+    let apiPath = null;
+    let isArrayChild = false;
+    let current = node.parent;
+    while (current) {
+        if (current.key !== undefined && current.key !== null) {
+            if (typeof current.key === 'string' && current.key.includes('/')) {
+                apiPath = current.key;
+                break;
+            }
+            if (!isNaN(current.key)) {
+                isArrayChild = true;
+            }
+        }
+        current = current.parent;
+    }
+
+    if (!apiPath) return null;
+
+    const pathDocs = apiDocs[apiPath];
+    if (!pathDocs) return null;
+
+    let fieldEntry = pathDocs[fieldKey];
+    if (!fieldEntry && isArrayChild && pathDocs._array_members) {
+        fieldEntry = pathDocs._array_members[fieldKey];
+    }
+
+    if (!fieldEntry || typeof fieldEntry !== 'object' || Array.isArray(fieldEntry)) return null;
+
+    return { fieldEntry, apiPath };
+}
+
+function _annotateConstants(tree, apiDocs, hwVersion) {
+    // Walk the jsonview tree and annotate leaf values with constant
+    // descriptions and unit abbreviations.
+    jsonview.traverse(tree, function(node) {
+        if (!node.el || node.value === null || node.value === undefined) return;
+        if (typeof node.value === 'object') return; // skip objects/arrays
+
+        const resolved = _resolveFieldEntry(node, apiDocs);
+        if (!resolved) return;
+
+        const { fieldEntry } = resolved;
+        const valueEl = node.el.querySelector('.json-value');
+        if (!valueEl) return;
+
+        // --- constant annotation -----------------------------------------
+        const constants = fieldEntry.constants;
+        if (constants && Array.isArray(constants)) {
+            const nodeVal = node.value;
+            let matchDesc = null;
+
+            for (const c of constants) {
+                if (c.version !== -1 && hwVersion !== -1 && (c.version & hwVersion) === 0) {
+                    continue;
+                }
+                if (typeof nodeVal === 'boolean') {
+                    if (c.val === String(nodeVal)) { matchDesc = c.desc; break; }
+                } else if (typeof nodeVal === 'number') {
+                    if (c.val === nodeVal) { matchDesc = c.desc; break; }
+                } else if (typeof nodeVal === 'string') {
+                    if (c.val === nodeVal) { matchDesc = c.desc; break; }
+                }
+            }
+
+            if (matchDesc) {
+                const hintEl = document.createElement('span');
+                hintEl.className = 'enum-hint';
+                hintEl.textContent = ` (${matchDesc})`;
+                hintEl.title = matchDesc;
+                valueEl.appendChild(hintEl);
+            }
+        }
+
+        // --- unit annotation ---------------------------------------------
+        if (fieldEntry.unit) {
+            const unitEl = document.createElement('span');
+            unitEl.className = 'unit-hint';
+            unitEl.textContent = ` ${fieldEntry.unit.abbr}`;
+            unitEl.title = fieldEntry.unit.name;
+            valueEl.appendChild(unitEl);
+        }
+    });
+}
+
+function _addInfoButtons(tree, apiDocs, hwVersion) {
+    // Add clickable info buttons next to field keys that have API documentation.
+    // Uses Bootstrap 5 popovers to show description, unit, and constants.
+    jsonview.traverse(tree, function(node) {
+        if (!node.el || node.value === null || node.value === undefined) return;
+        if (typeof node.value === 'object') return;
+
+        const resolved = _resolveFieldEntry(node, apiDocs);
+        if (!resolved) return;
+
+        const { fieldEntry } = resolved;
+
+        // Only add info button if there is a description
+        if (!fieldEntry.desc) return;
+
+        // Build popover HTML content
+        let bodyHtml = `<div class="field-info-body">`;
+        bodyHtml += `<p class="field-info-desc">${_escapeHtml(fieldEntry.desc)}</p>`;
+
+        if (fieldEntry.unit) {
+            bodyHtml += `<p class="field-info-unit">Einheit: <strong>${_escapeHtml(fieldEntry.unit.name)}</strong> (${_escapeHtml(fieldEntry.unit.abbr)})</p>`;
+        }
+
+        if (fieldEntry.constants && fieldEntry.constants.length > 0) {
+            // Filter by hw version for display
+            const relevantConsts = fieldEntry.constants.filter(c =>
+                c.version === -1 || hwVersion === -1 || (c.version & hwVersion) !== 0
+            );
+            if (relevantConsts.length > 0) {
+                bodyHtml += `<div class="field-info-constants"><strong>Werte:</strong><table class="field-info-table">`;
+                for (const c of relevantConsts) {
+                    bodyHtml += `<tr><td class="field-info-val">${_escapeHtml(String(c.val))}</td><td>${_escapeHtml(c.desc)}</td></tr>`;
+                }
+                bodyHtml += `</table></div>`;
+            }
+        }
+
+        bodyHtml += `</div>`;
+
+        // Create info button
+        const btn = document.createElement('i');
+        btn.className = 'bi bi-info-circle field-info-btn';
+        btn.setAttribute('tabindex', '0');
+        btn.setAttribute('role', 'button');
+
+        // Insert at the very start of the line
+        node.el.insertBefore(btn, node.el.firstChild);
+
+        // Initialize Bootstrap popover
+        new bootstrap.Popover(btn, {
+            html: true,
+            content: bodyHtml,
+            placement: 'right',
+            trigger: 'focus',
+            fallbackPlacements: ['right', 'left', 'top', 'bottom'],
+            customClass: 'field-info-popover',
+        });
+    });
+}
+
+function _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
 function make_jsonview(json, selector, options = {}) {
     const container = document.querySelector(selector);
     const tree = jsonview.create(json);
+    const apiConstants = options.apiConstants || null;
+    const hwVersion = options.hwVersion || -1;  // -1 = ANY
 
     // Create enhanced JSON viewer container
     const wrapper = document.createElement('div');
@@ -172,7 +347,23 @@ function make_jsonview(json, selector, options = {}) {
     const jsonContent = document.createElement('div');
     jsonContent.className = 'json-content';
 
+    // Create legend for colored line highlights
+    const legend = document.createElement('div');
+    legend.className = 'json-legend';
+    legend.innerHTML = `
+        <span class="json-legend-item">
+            <span class="json-legend-swatch json-legend-modified"></span> Konfiguration geändert
+        </span>
+        <span class="json-legend-item">
+            <span class="json-legend-swatch json-legend-important"></span> Konfiguration geändert aber nicht gespeichert
+        </span>
+        <span class="json-legend-item">
+            <i class="bi bi-info-circle json-legend-info-icon"></i> API-Dokumentation verfügbar
+        </span>
+    `;
+
     wrapper.appendChild(controls);
+    wrapper.appendChild(legend);
     wrapper.appendChild(jsonContent);
     container.innerHTML = '';
     container.appendChild(wrapper);
@@ -189,10 +380,13 @@ function make_jsonview(json, selector, options = {}) {
             const valueType = typeof node.value;
             node.el.classList.add(`json-type-${valueType}`);
 
-            // Add timestamp formatting
+            // Add timestamp formatting — only for plausible real-world dates
+            // (uptimes, boot_ids, bitmasks, etc. also fall into the Unix range
+            //  but decode to implausible years like 2057 or 2106)
             if (typeof node.value === 'number' && node.value > 1000000000 && node.value < 9999999999) {
                 const date = new Date(node.value * 1000);
-                if (!isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                if (!isNaN(year) && year >= 2020 && year <= new Date().getFullYear() + 2) {
                     const timeEl = document.createElement('span');
                     timeEl.className = 'timestamp-hint';
                     timeEl.textContent = ` (${date.toLocaleString()})`;
@@ -217,6 +411,13 @@ function make_jsonview(json, selector, options = {}) {
             }
         }
     });
+
+    // Annotate leaf values with API doc constant descriptions and units;
+    // add info buttons with Bootstrap popovers for field documentation.
+    if (apiConstants) {
+        _annotateConstants(tree, apiConstants, hwVersion);
+        _addInfoButtons(tree, apiConstants, hwVersion);
+    }
 
     // Add search functionality
     const searchInput = wrapper.querySelector('.json-search');
@@ -486,8 +687,14 @@ function vislog_protocol(data) {
         create_column_selector(data.chart.datasets);
     }
 
-    make_jsonview(data.before_protocol_json, '#before-protocol-json')
-    make_jsonview(data.after_protocol_json,  '#after-protocol-json')
+    // Detect hardware version from either before or after protocol JSON
+    const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
+    const hwVersion = _detectHwVersion(protocolJson);
+    const jsonviewOpts = data.api_constants
+        ? { apiConstants: data.api_constants, hwVersion: hwVersion }
+        : {};
+    make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts)
+    make_jsonview(data.after_protocol_json,  '#after-protocol-json', jsonviewOpts)
 
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
@@ -498,7 +705,11 @@ function reset_zoom() {
         chart.resetZoom();
     }
 }function vislog_report(data) {
-    make_jsonview(data.report_json, '#report-json');
+    const hwVersion = _detectHwVersion(data.report_json);
+    const jsonviewOpts = data.api_constants
+        ? { apiConstants: data.api_constants, hwVersion: hwVersion }
+        : {};
+    make_jsonview(data.report_json, '#report-json', jsonviewOpts);
 
     document.getElementById('report-log-text').value = data.report_log;
 

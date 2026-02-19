@@ -4,6 +4,7 @@
 from flask import Flask, request, render_template, abort, redirect, url_for
 import shortuuid
 import os
+import sys
 import json
 import datetime
 import logging
@@ -13,6 +14,139 @@ import urllib.parse
 import re
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# API doc constants extraction
+# ---------------------------------------------------------------------------
+def _build_api_constants():
+    """Import api_doc_generator modules and build a lookup dict for API field docs.
+
+    Returns a nested dict:
+        { "evse/state": {
+            "charger_state": {
+                "desc": "German description of the field",
+                "unit": {"abbr": "mA", "name": "Milliampere"} or null,
+                "constants": [ {val, desc, version}, ... ]
+            },
+            ...
+          },
+          ...
+        }
+
+    Every leaf field that has at least a description, a unit, or constants
+    is included.  ``_array_members`` and ``_union_*`` sub-dicts follow the
+    same per-field shape.
+    """
+    api_doc_dir = os.path.join(os.path.dirname(__file__), 'api_doc_generator')
+    if not os.path.isdir(api_doc_dir):
+        return {}
+
+    # Temporarily add api_doc_generator to sys.path so its internal imports work
+    prev_path = sys.path.copy()
+    sys.path.insert(0, api_doc_dir)
+    try:
+        from mods import mods  # noqa: imports all 30 module definitions
+        from api_doc_common import EType
+    except Exception as e:
+        print(f"Warning: Could not import api_doc_generator: {e}")
+        return {}
+    finally:
+        sys.path = prev_path
+
+    def _clean(text):
+        """Strip HTML tags and collapse whitespace."""
+        text = re.sub(r'<[^>]+>', ' ', text).strip()
+        return re.sub(r'\s+', ' ', text)
+
+    result = {}
+
+    def _extract_elem(elem, path_prefix, field_name, out):
+        """Recursively extract docs from an Elem tree into *out*."""
+        entry = {}
+
+        # --- description --------------------------------------------------
+        desc_de = elem.desc.get('de') if elem.desc else None
+        if desc_de and desc_de.strip():
+            entry['desc'] = _clean(desc_de)
+
+        # --- unit ---------------------------------------------------------
+        if elem.unit is not None:
+            unit_name = elem.unit.name.get('de') if elem.unit.name else elem.unit.abbr
+            entry['unit'] = {'abbr': elem.unit.abbr, 'name': unit_name}
+
+        # --- constants ----------------------------------------------------
+        if elem.constants:
+            constants = []
+            for c in elem.constants:
+                val = c.val
+                if elem.type_ == EType.BOOL:
+                    val = str(val).lower()  # True -> "true", False -> "false"
+                cdesc = c.desc.get('de')
+                constants.append({
+                    'val': val,
+                    'desc': _clean(cdesc),
+                    'version': int(c.version),
+                })
+            if constants:
+                entry['constants'] = constants
+
+        # Store the entry if it carries any useful information
+        if entry:
+            out[field_name] = entry
+
+        # --- recurse into children ----------------------------------------
+        if elem.type_ == EType.OBJECT and elem.val:
+            for child_name, child_elem in elem.val.items():
+                _extract_elem(child_elem, path_prefix, child_name, out)
+
+        elif elem.type_ == EType.ARRAY and elem.val:
+            for idx, child_elem in enumerate(elem.val):
+                child_out = {}
+                _extract_elem(child_elem, path_prefix, str(idx), child_out)
+                if child_out:
+                    arr_key = '_array_members'
+                    if arr_key not in out:
+                        out[arr_key] = {}
+                    out[arr_key].update(child_out)
+
+        elif elem.type_ in (EType.UNION, EType.HIDDEN_UNION) and elem.val:
+            for tag_val, child_elem in elem.val.items():
+                child_out = {}
+                _extract_elem(child_elem, path_prefix, str(tag_val), child_out)
+                if child_out:
+                    tag_key = f'_union_{tag_val}'
+                    if tag_key not in out:
+                        out[tag_key] = {}
+                    out[tag_key].update(child_out)
+
+    for mod in mods:
+        for func in mod.functions:
+            api_path = func.api_name(mod.name)
+            func_out = {}
+            root = func.root
+
+            if root.type_ == EType.OBJECT and root.val:
+                for field_name, elem in root.val.items():
+                    _extract_elem(elem, api_path, field_name, func_out)
+            elif root.type_ == EType.ARRAY and root.val:
+                for idx, elem in enumerate(root.val):
+                    child_out = {}
+                    _extract_elem(elem, api_path, str(idx), child_out)
+                    if child_out:
+                        if '_array_members' not in func_out:
+                            func_out['_array_members'] = {}
+                        func_out['_array_members'].update(child_out)
+            elif root.constants or (root.desc and root.desc.get('de')):
+                _extract_elem(root, api_path, '_root', func_out)
+
+            if func_out:
+                result[api_path] = func_out
+
+    return result
+
+
+# Build once at startup
+api_constants = _build_api_constants()
 
 DEFAULT_PORT = 5001
 
@@ -471,6 +605,7 @@ def handle_report(data):
         'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
         'trace_modules': trace_modules,
         'coredump_info': coredump_info,
+        'api_constants': api_constants,
     }
 
     # Render the protocol with syntax highlighting
@@ -583,6 +718,7 @@ def handle_protocol_config(data, uuid, dropped_lines_count=None):
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': dropped_lines_count,
+        'api_constants': api_constants,
     }
 
     return render_template('protocol_config.html', data=config_data)
@@ -662,6 +798,7 @@ def handle_protocol_chart(data, config_param, dropped_lines_count=None):
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': dropped_lines_count,
+        'api_constants': api_constants,
     }
 
     # Render the protocol with syntax highlighting
