@@ -121,6 +121,8 @@ TRANSLATIONS = {
         'chart_time_since_state_change': 'Zeit seit Zustandswechsel',
         'chart_voltage_plus_12v': 'Spannung +12V',
         'chart_voltage_minus_12v': 'Spannung -12V',
+        'footer_ecosystem': 'Teil des WARP Charger Ökosystems',
+        'footer_source': 'Quellcode auf GitHub',
     },
     'en': {
         # --- index page ---
@@ -238,6 +240,8 @@ TRANSLATIONS = {
         'chart_time_since_state_change': 'Time since state change',
         'chart_voltage_plus_12v': 'Voltage +12V',
         'chart_voltage_minus_12v': 'Voltage -12V',
+        'footer_ecosystem': 'Part of the WARP Charger ecosystem',
+        'footer_source': 'Source on GitHub',
     },
 }
 

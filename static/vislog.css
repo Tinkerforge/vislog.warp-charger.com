@@ -40,6 +40,8 @@
    -------------------------------------------------------------------------- */
 body {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 /* --------------------------------------------------------------------------
@@ -72,7 +74,7 @@ body {
    Upload Page
    -------------------------------------------------------------------------- */
 .upload-wrapper {
-  min-height: 100vh;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -527,10 +529,30 @@ body {
 /* --------------------------------------------------------------------------
    Print Styles
    -------------------------------------------------------------------------- */
+/* Footer */
+footer {
+  margin-top: auto;
+  padding: 1.5rem 0 1rem;
+  border-top: 1px solid var(--bs-border-color);
+  color: var(--bs-secondary-color);
+  font-size: .8rem;
+  text-align: center;
+}
+
+footer a {
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
 @media print {
   .theme-toggle,
   .controls-bar,
-  .json-controls {
+  .json-controls,
+  footer {
     display: none !important;
   }
 
