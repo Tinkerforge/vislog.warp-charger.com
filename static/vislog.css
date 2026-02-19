@@ -43,13 +43,15 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   Theme Toggle
+   Theme Toggle & Language Switcher
    -------------------------------------------------------------------------- */
 .theme-toggle {
   position: fixed;
   top: 1rem;
   right: 1rem;
   z-index: 1050;
+  display: flex;
+  gap: 0.5rem;
 }
 
 .theme-toggle .btn {
@@ -59,6 +61,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.btn-lang {
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 /* --------------------------------------------------------------------------

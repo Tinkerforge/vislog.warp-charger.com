@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de" data-bs-theme="dark">
+<html lang="{{ lang }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger protocol visualizer</title>
+    <title>{{ t.page_title_report }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
@@ -12,30 +12,22 @@
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
 </head>
 <body>
-    <!-- Theme Toggle -->
-    <div class="theme-toggle">
-        <button class="btn btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
-            <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
-            <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
-        </button>
-    </div>
-
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="config-tab" data-bs-toggle="tab" data-bs-target="#report-json" type="button" role="tab">
-                <i class="bi bi-gear"></i> Konfiguration
+                <i class="bi bi-gear"></i> {{ t.tab_configuration }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="log-tab" data-bs-toggle="tab" data-bs-target="#report-log" type="button" role="tab">
-                <i class="bi bi-journal-text"></i> Ereignis-Log
+                <i class="bi bi-journal-text"></i> {{ t.tab_event_log }}
             </button>
         </li>
         {% if data.report_trace %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" type="button" role="tab">
-                <i class="bi bi-bug"></i> Trace-Log
+                <i class="bi bi-bug"></i> {{ t.tab_trace_log }}
             </button>
         </li>
         {% endif %}
@@ -48,7 +40,16 @@
         {% endfor %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" type="button" role="tab">
-                <i class="bi bi-file-binary"></i> Coredump
+                <i class="bi bi-file-binary"></i> {{ t.tab_coredump }}
+            </button>
+        </li>
+        <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
+            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
+                {{ 'EN' if lang == 'de' else 'DE' }}
+            </a>
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
+                <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+                <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
             </button>
         </li>
     </ul>
@@ -76,24 +77,24 @@
                     <!-- Firmware Info Card -->
                     <div class="card mb-3">
                         <div class="card-header">
-                            <i class="bi bi-cpu"></i> Firmware Information
+                            <i class="bi bi-cpu"></i> {{ t.firmware_info }}
                         </div>
                         <div class="card-body">
                             {% if data.coredump_info.firmware_name %}
                             <div class="mb-2">
-                                <strong>Firmware:</strong>
+                                <strong>{{ t.firmware_label }}</strong>
                                 <code>{{ data.coredump_info.firmware_name }}</code>
                             </div>
                             {% endif %}
                             {% if data.coredump_info.firmware_commit_id %}
                             <div class="mb-2">
-                                <strong>Commit:</strong>
+                                <strong>{{ t.commit_label }}</strong>
                                 <code>{{ data.coredump_info.firmware_commit_id }}</code>
                             </div>
                             {% endif %}
                             {% if data.coredump_info.crashed_task_handle %}
                             <div>
-                                <strong>Crashed Task Handle:</strong>
+                                <strong>{{ t.crashed_task_handle }}</strong>
                                 <code>{{ data.coredump_info.crashed_task_handle }}</code>
                             </div>
                             {% endif %}
@@ -104,19 +105,19 @@
                     {% if data.coredump_info.exception_cause %}
                     <div class="card mb-3 border-danger">
                         <div class="card-header bg-danger text-white">
-                            <i class="bi bi-exclamation-triangle"></i> Exception Cause
+                            <i class="bi bi-exclamation-triangle"></i> {{ t.exception_cause }}
                         </div>
                         <div class="card-body">
                             <div class="mb-2">
-                                <strong>Code:</strong>
+                                <strong>{{ t.code_label }}</strong>
                                 <code>{{ data.coredump_info.exception_cause.code }}</code>
                             </div>
                             <div class="mb-2">
-                                <strong>Name:</strong>
+                                <strong>{{ t.name_label }}</strong>
                                 <span class="badge bg-danger">{{ data.coredump_info.exception_cause.name }}</span>
                             </div>
                             <div>
-                                <strong>Description:</strong>
+                                <strong>{{ t.description_label }}</strong>
                                 <p class="mb-0 mt-1 text-body-secondary">{{ data.coredump_info.exception_cause.description }}</p>
                             </div>
                         </div>
@@ -129,14 +130,14 @@
                     {% if data.coredump_info.registers %}
                     <div class="card mb-3">
                         <div class="card-header">
-                            <i class="bi bi-list-ol"></i> Registers
+                            <i class="bi bi-list-ol"></i> {{ t.registers }}
                         </div>
                         <div class="card-body">
                             <table class="table table-sm table-striped mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Register</th>
-                                        <th>Value</th>
+                                        <th>{{ t.register_col }}</th>
+                                        <th>{{ t.value_col }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -156,7 +157,7 @@
                     {% if data.coredump_info.error %}
                     <div class="card mb-3 border-warning">
                         <div class="card-header bg-warning text-dark">
-                            <i class="bi bi-exclamation-circle"></i> Parsing Warning
+                            <i class="bi bi-exclamation-circle"></i> {{ t.parsing_warning }}
                         </div>
                         <div class="card-body">
                             <p class="mb-0">{{ data.coredump_info.error }}</p>
@@ -169,12 +170,12 @@
             <!-- Info about local GDB analysis -->
             <div class="alert alert-info mt-3">
                 <i class="bi bi-info-circle"></i>
-                <strong>Hinweis:</strong> Für eine vollständige Stack-Trace-Analyse mit GDB kann das
-                <code>coredump.py</code>-Skript aus dem esp32-firmware Repository verwendet werden.
+                <strong>{{ t.hint_label }}</strong> {{ t.coredump_hint }}
+                <code>coredump.py</code>{{ t.coredump_hint_suffix }}
             </div>
             {% else %}
             <div class="alert alert-secondary">
-                <i class="bi bi-info-circle"></i> Es befindet sich kein Coredump im Debug-Report.
+                <i class="bi bi-info-circle"></i> {{ t.no_coredump }}
             </div>
             {% endif %}
         </div>
@@ -182,6 +183,7 @@
 
     <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
+        const T = {{ t | tojson }};
         let data = {{ data | tojson}};
 
         // Theme toggle

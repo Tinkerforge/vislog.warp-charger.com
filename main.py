@@ -12,19 +12,47 @@ import pandas as pd
 from io import StringIO
 import urllib.parse
 import re
+from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 
 app = Flask(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Language detection
+# ---------------------------------------------------------------------------
+def _detect_language():
+    """Detect language from Accept-Language header.  Returns 'de' or 'en'."""
+    accept = request.headers.get('Accept-Language', '')
+    # Simple parser: look for 'en' or 'de' with highest quality
+    best_lang = DEFAULT_LANGUAGE
+    best_q = -1
+    for part in accept.split(','):
+        part = part.strip()
+        if ';' in part:
+            lang_tag, q_str = part.split(';', 1)
+            try:
+                q = float(q_str.strip().replace('q=', ''))
+            except ValueError:
+                q = 0
+        else:
+            lang_tag = part
+            q = 1.0
+        lang_tag = lang_tag.strip().split('-')[0].lower()
+        if lang_tag in SUPPORTED_LANGUAGES and q > best_q:
+            best_lang = lang_tag
+            best_q = q
+    return best_lang
 
 # ---------------------------------------------------------------------------
 # API doc constants extraction
 # ---------------------------------------------------------------------------
-def _build_api_constants():
+def _build_api_constants(locale='de'):
     """Import api_doc_generator modules and build a lookup dict for API field docs.
 
     Returns a nested dict:
         { "evse/state": {
             "charger_state": {
-                "desc": "German description of the field",
+                "desc": "Description of the field in the given locale",
                 "unit": {"abbr": "mA", "name": "Milliampere"} or null,
                 "constants": [ {val, desc, version}, ... ]
             },
@@ -65,13 +93,13 @@ def _build_api_constants():
         entry = {}
 
         # --- description --------------------------------------------------
-        desc_de = elem.desc.get('de') if elem.desc else None
-        if desc_de and desc_de.strip():
-            entry['desc'] = _clean(desc_de)
+        desc_text = elem.desc.get(locale) if elem.desc else None
+        if desc_text and desc_text.strip():
+            entry['desc'] = _clean(desc_text)
 
         # --- unit ---------------------------------------------------------
         if elem.unit is not None:
-            unit_name = elem.unit.name.get('de') if elem.unit.name else elem.unit.abbr
+            unit_name = elem.unit.name.get(locale) if elem.unit.name else elem.unit.abbr
             entry['unit'] = {'abbr': elem.unit.abbr, 'name': unit_name}
 
         # --- constants ----------------------------------------------------
@@ -81,7 +109,7 @@ def _build_api_constants():
                 val = c.val
                 if elem.type_ == EType.BOOL:
                     val = str(val).lower()  # True -> "true", False -> "false"
-                cdesc = c.desc.get('de')
+                cdesc = c.desc.get(locale)
                 constants.append({
                     'val': val,
                     'desc': _clean(cdesc),
@@ -136,7 +164,7 @@ def _build_api_constants():
                         if '_array_members' not in func_out:
                             func_out['_array_members'] = {}
                         func_out['_array_members'].update(child_out)
-            elif root.constants or (root.desc and root.desc.get('de')):
+            elif root.constants or (root.desc and root.desc.get(locale)):
                 _extract_elem(root, api_path, '_root', func_out)
 
             if func_out:
@@ -145,8 +173,8 @@ def _build_api_constants():
     return result
 
 
-# Build once at startup
-api_constants = _build_api_constants()
+# Build API constants for both locales at startup
+api_constants = {lang: _build_api_constants(lang) for lang in SUPPORTED_LANGUAGES}
 
 DEFAULT_PORT = 5001
 
@@ -155,81 +183,83 @@ PROTOCOL_DIR = 'protocols'
 if not os.path.exists(PROTOCOL_DIR):
     os.makedirs(PROTOCOL_DIR)
 
-chart_config = [{
-    'csv_title': 'allowed_charging_current',
-    'label':     'Erlaubter Ladestrom (mA)',
-}, {
-    'csv_title': 'cp_pwm_duty_cycle',
-    'label':     'CP PWM (% Duty Cycle)',
-    'edit_func':  lambda df: list(map(lambda v: v/10.0, df)),
-}, {
-    'csv_title': 'iec61851_state',
-    'label':     'IEC61851 State',
-}, {
-    'csv_title': 'power',
-    'label':     'Leistung (W)',
-}, {
-    'csv_title': 'current_0',
-    'label':     'Strom L1 (mA)',
-}, {
-    'csv_title': 'current_1',
-    'label':     'Strom L2 (mA)',
-}, {
-    'csv_title': 'current_2',
-    'label':     'Strom L3 (mA)',
-}, { # old title
-    'csv_title': 'resistance_cp_pe',
-    'label':     'Widerstand CP/PE (Ohm)',
-    'hidden':    True
-}, { # new title
-    'csv_title': 'CP/PE',
-    'label':     'Widerstand CP/PE (Ohm)',
-    'hidden':    True
-}, {
-    'csv_title': 'contactor_state',
-    'label':     'Zustand Schütz',
-    'hidden':    True
-}, {
-    'csv_title': 'contactor_error',
-    'label':     'Fehlerzustand Schütz',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_0_active',
-    'label':     'Phase 0 Aktiv',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_1_active',
-    'label':     'Phase 1 Aktiv',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_2_active',
-    'label':     'Phase 2 Aktiv',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_0_connected',
-    'label':     'Phase 0 Verbunden',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_1_connected',
-    'label':     'Phase 1 Verbunden',
-    'hidden':    True
-}, {
-    'csv_title': 'phase_2_connected',
-    'label':     'Phase 2 Verbunden',
-    'hidden':    True
-}, {
-    'csv_title': 'time_since_state_change',
-    'label':     'Zeit seit Zustandswechsel',
-    'hidden':    True
-}, { # old title
-    'csv_title': 'voltage_plus_12v',
-    'label':     'Spannung +12V',
-    'hidden':    True
-}, {
-    'csv_title': 'voltage_minus_12v',
-    'label':     'Spannung -12V',
-    'hidden':    True
-}]
+def get_chart_config(t):
+    """Return chart_config with translated labels."""
+    return [{
+        'csv_title': 'allowed_charging_current',
+        'label':     t['chart_allowed_charging_current'],
+    }, {
+        'csv_title': 'cp_pwm_duty_cycle',
+        'label':     t['chart_cp_pwm_duty_cycle'],
+        'edit_func':  lambda df: list(map(lambda v: v/10.0, df)),
+    }, {
+        'csv_title': 'iec61851_state',
+        'label':     t['chart_iec61851_state'],
+    }, {
+        'csv_title': 'power',
+        'label':     t['chart_power'],
+    }, {
+        'csv_title': 'current_0',
+        'label':     t['chart_current_0'],
+    }, {
+        'csv_title': 'current_1',
+        'label':     t['chart_current_1'],
+    }, {
+        'csv_title': 'current_2',
+        'label':     t['chart_current_2'],
+    }, { # old title
+        'csv_title': 'resistance_cp_pe',
+        'label':     t['chart_resistance_cp_pe'],
+        'hidden':    True
+    }, { # new title
+        'csv_title': 'CP/PE',
+        'label':     t['chart_resistance_cp_pe'],
+        'hidden':    True
+    }, {
+        'csv_title': 'contactor_state',
+        'label':     t['chart_contactor_state'],
+        'hidden':    True
+    }, {
+        'csv_title': 'contactor_error',
+        'label':     t['chart_contactor_error'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_0_active',
+        'label':     t['chart_phase_0_active'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_1_active',
+        'label':     t['chart_phase_1_active'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_2_active',
+        'label':     t['chart_phase_2_active'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_0_connected',
+        'label':     t['chart_phase_0_connected'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_1_connected',
+        'label':     t['chart_phase_1_connected'],
+        'hidden':    True
+    }, {
+        'csv_title': 'phase_2_connected',
+        'label':     t['chart_phase_2_connected'],
+        'hidden':    True
+    }, {
+        'csv_title': 'time_since_state_change',
+        'label':     t['chart_time_since_state_change'],
+        'hidden':    True
+    }, { # old title
+        'csv_title': 'voltage_plus_12v',
+        'label':     t['chart_voltage_plus_12v'],
+        'hidden':    True
+    }, {
+        'csv_title': 'voltage_minus_12v',
+        'label':     t['chart_voltage_minus_12v'],
+        'hidden':    True
+    }]
 
 def read_and_preprocess_protocol(file_path):
     """
@@ -307,28 +337,61 @@ def convert_millis_to_real_time(millis_values, timestamp_info):
 
 # Route for the main page
 @app.route('/', methods=['GET', 'POST'])
-def index():
+def index_redirect():
     if request.method == 'POST':
         # upload file flask
         f = request.files.get('file')
-
         uuid = shortuuid.uuid()
         file_path = os.path.join(PROTOCOL_DIR, uuid)
         f.save(file_path)
+        lang = _detect_language()
+        return redirect(f'/{lang}/{uuid}')
 
-        return redirect('/' + uuid)
+    # Redirect to language-prefixed index
+    lang = _detect_language()
+    return redirect(f'/{lang}/')
 
-    # Render the form with available languages
-    return render_template('index.html')
 
-# Route to view a specific protocol by its ID - shows configuration page
+@app.route('/<lang>/', methods=['GET', 'POST'])
+def index(lang):
+    if lang not in SUPPORTED_LANGUAGES:
+        abort(404)
+    if request.method == 'POST':
+        f = request.files.get('file')
+        uuid = shortuuid.uuid()
+        file_path = os.path.join(PROTOCOL_DIR, uuid)
+        f.save(file_path)
+        return redirect(f'/{lang}/{uuid}')
+
+    t = get_translations(lang)
+    return render_template('index.html', t=t, lang=lang)
+
+
+# Legacy route without language prefix — redirect with auto-detect
 @app.route('/<uuid>')
-def view_id(uuid):
+def view_id_legacy(uuid):
+    # Don't redirect if uuid matches a language code (handled by index route)
+    if uuid in SUPPORTED_LANGUAGES:
+        abort(404)
+    lang = _detect_language()
+    # Preserve query string
+    qs = request.query_string.decode()
+    target = f'/{lang}/{uuid}'
+    if qs:
+        target += f'?{qs}'
+    return redirect(target)
+
+
+@app.route('/<lang>/<uuid>')
+def view_id(lang, uuid):
+    if lang not in SUPPORTED_LANGUAGES:
+        abort(404)
     # Create the file path for the protocol
     file_path = os.path.join(PROTOCOL_DIR, uuid)
     if not os.path.exists(file_path):
         abort(404)  # Return a 404 error if the protocol does not exist
 
+    t = get_translations(lang)
     data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
         is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
@@ -336,23 +399,26 @@ def view_id(uuid):
         abort(400)
 
     if is_report:
-        return handle_report(data)
+        return handle_report(data, lang, t)
     else:
         # Check if configuration parameter is provided
         config_param = request.args.get('configuration')
         if config_param:
-            return handle_protocol_chart(data, config_param, dropped_lines_count)
+            return handle_protocol_chart(data, config_param, lang, t, dropped_lines_count)
         else:
-            return handle_protocol_config(data, uuid, dropped_lines_count)
+            return handle_protocol_config(data, uuid, lang, t, dropped_lines_count)
 
 # Route to show the chart with selected columns
-@app.route('/<uuid>/chart')
-def view_chart(uuid):
+@app.route('/<lang>/<uuid>/chart')
+def view_chart(lang, uuid):
+    if lang not in SUPPORTED_LANGUAGES:
+        abort(404)
     # Create the file path for the protocol
     file_path = os.path.join(PROTOCOL_DIR, uuid)
     if not os.path.exists(file_path):
         abort(404)  # Return a 404 error if the protocol does not exist
 
+    t = get_translations(lang)
     data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
         is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
@@ -360,10 +426,10 @@ def view_chart(uuid):
         abort(400)
 
     if is_report:
-        return handle_report(data)
+        return handle_report(data, lang, t)
     else:
         config_param = request.args.get('configuration', '')
-        return handle_protocol_chart(data, config_param, dropped_lines_count)
+        return handle_protocol_chart(data, config_param, lang, t, dropped_lines_count)
 
 # Coredump parsing constants and helpers (based on esp32-firmware/software/coredump.py)
 TF_COREDUMP_PREFIX = b"___tf_coredump_info_start___"
@@ -530,7 +596,7 @@ def parse_coredump(coredump_blocks):
 
     return result
 
-def handle_report(data):
+def handle_report(data, lang, t):
     try:
         # Fix json syntax error that can happen in report
         data_json     = data[1].replace('": ,', '": {},')
@@ -605,11 +671,11 @@ def handle_report(data):
         'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
         'trace_modules': trace_modules,
         'coredump_info': coredump_info,
-        'api_constants': api_constants,
+        'api_constants': api_constants[lang],
     }
 
     # Render the protocol with syntax highlighting
-    return render_template('report.html', data = data)
+    return render_template('report.html', data=data, t=t, lang=lang)
 
 def parse_protocol_data(data):
     # Parse protocol data and extract available columns
@@ -669,9 +735,11 @@ def parse_protocol_data(data):
         'has_real_timestamps': timestamp_info is not None
     }
 
-def handle_protocol_config(data, uuid, dropped_lines_count=None):
+def handle_protocol_config(data, uuid, lang, t, dropped_lines_count=None):
     # Show configuration page where user can select columns
     parsed = parse_protocol_data(data)
+
+    chart_config = get_chart_config(t)
 
     # Create column metadata for the configuration page
     column_metadata = []
@@ -718,14 +786,16 @@ def handle_protocol_config(data, uuid, dropped_lines_count=None):
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': dropped_lines_count,
-        'api_constants': api_constants,
+        'api_constants': api_constants[lang],
     }
 
-    return render_template('protocol_config.html', data=config_data)
+    return render_template('protocol_config.html', data=config_data, t=t, lang=lang)
 
-def handle_protocol_chart(data, config_param, dropped_lines_count=None):
+def handle_protocol_chart(data, config_param, lang, t, dropped_lines_count=None):
     # Show chart with only selected columns
     parsed = parse_protocol_data(data)
+
+    chart_config = get_chart_config(t)
 
     # Decode configuration parameter
     selected_columns = []
@@ -798,16 +868,16 @@ def handle_protocol_chart(data, config_param, dropped_lines_count=None):
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': dropped_lines_count,
-        'api_constants': api_constants,
+        'api_constants': api_constants[lang],
     }
 
     # Render the protocol with syntax highlighting
-    return render_template('protocol.html', data=chart_data)
+    return render_template('protocol.html', data=chart_data, t=t, lang=lang)
 
-def handle_protocol(data):
+def handle_protocol(data, lang, t):
     # Legacy function - now redirects to configuration page
     # This is kept for backward compatibility, but should not be used
-    return handle_protocol_chart(data, '')
+    return handle_protocol_chart(data, '', lang, t)
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))

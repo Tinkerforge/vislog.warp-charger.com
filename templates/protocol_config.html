@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de" data-bs-theme="dark">
+<html lang="{{ lang }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger Protokoll-Visualisierer - Spalten auswählen</title>
+    <title>{{ t.page_title_protocol_config }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
@@ -12,12 +12,20 @@
     <script src="{{ url_for('static', filename='vislog.js') }}"></script>
 </head>
 <body>
-    <!-- Theme Toggle -->
-    <div class="theme-toggle">
-        <button class="btn btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
-            <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
-            <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
-        </button>
+    <!-- Header Bar -->
+    <div class="controls-bar bg-body-secondary border-bottom p-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h5 class="mb-0">{{ t.select_columns_heading }}</h5>
+            <div class="d-flex align-items-center gap-2">
+                <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
+                    {{ 'EN' if lang == 'de' else 'DE' }}
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
+                    <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+                    <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
+                </button>
+            </div>
+        </div>
     </div>
 
     <div class="container py-4">
@@ -25,31 +33,29 @@
         <!-- Warning banner for truncated CSV data -->
         <div class="alert alert-warning alert-dismissible fade show" role="alert">
             <i class="bi bi-exclamation-triangle-fill"></i>
-            <strong>Achtung:</strong> {{ data.dropped_lines_count }} Zeilen wurden aus den CSV-Daten entfernt. Das Ladeprotokoll ist unvollständig.
+            <strong>{{ t.warning_label }}</strong> {{ t.dropped_lines_warning.replace('${count}', data.dropped_lines_count | string) }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
         {% endif %}
-
-        <h1 class="text-center mb-4">Spalten für Visualisierung auswählen</h1>
 
         <!-- Column Selection Card -->
         <div class="card mb-4">
             <div class="card-body">
                 <!-- Search -->
                 <div class="mb-3">
-                    <input type="text" class="form-control" id="column-search" placeholder="Spalten durchsuchen..." onkeyup="filter_columns()">
+                    <input type="text" class="form-control" id="column-search" placeholder="{{ t.search_columns_placeholder }}" onkeyup="filter_columns()">
                 </div>
 
                 <!-- Controls -->
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggle_all_columns(true)">
-                        <i class="bi bi-check-all"></i> Alle auswählen
+                        <i class="bi bi-check-all"></i> {{ t.select_all }}
                     </button>
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggle_all_columns(false)">
-                        <i class="bi bi-x-lg"></i> Alle abwählen
+                        <i class="bi bi-x-lg"></i> {{ t.deselect_all }}
                     </button>
                     <button class="btn btn-sm btn-outline-secondary" onclick="select_default_columns()">
-                        <i class="bi bi-arrow-counterclockwise"></i> Standard-Auswahl
+                        <i class="bi bi-arrow-counterclockwise"></i> {{ t.default_selection }}
                     </button>
                     <span id="column-count" class="text-secondary small ms-auto"></span>
                 </div>
@@ -65,7 +71,7 @@
                         <label for="col-{{ loop.index }}" title="{{ column.name }}">
                             <span class="column-label">{{ column.label }}</span>
                             {% if column.predefined %}
-                            <span class="predefined-badge badge bg-secondary">Standard</span>
+                            <span class="predefined-badge badge bg-secondary">{{ t.predefined_badge }}</span>
                             {% endif %}
                         </label>
                     </div>
@@ -75,16 +81,16 @@
                 <!-- Action Buttons -->
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     <button class="btn btn-primary" onclick="view_chart()">
-                        <i class="bi bi-graph-up"></i> Chart anzeigen
+                        <i class="bi bi-graph-up"></i> {{ t.show_chart }}
                     </button>
                     <button class="btn btn-outline-secondary" onclick="copy_link()">
-                        <i class="bi bi-link-45deg"></i> Link kopieren
+                        <i class="bi bi-link-45deg"></i> {{ t.copy_link }}
                     </button>
                 </div>
 
                 <!-- Shareable Link -->
                 <div class="bg-body-tertiary rounded p-3">
-                    <label for="shareable-url" class="form-label fw-semibold">Teilbarer Link:</label>
+                    <label for="shareable-url" class="form-label fw-semibold">{{ t.shareable_link }}</label>
                     <input type="text" class="form-control font-monospace" id="shareable-url" readonly onclick="this.select()">
                 </div>
             </div>
@@ -94,22 +100,22 @@
         <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
-                    Konfiguration vor dem Ladeprotokoll
+                    {{ t.tab_config_before }}
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
-                    Konfiguration nach dem Ladeprotokoll
+                    {{ t.tab_config_after }}
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
-                    Log vor dem Ladeprotokoll
+                    {{ t.tab_log_before }}
                 </button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
-                    Log nach dem Ladeprotokoll
+                    {{ t.tab_log_after }}
                 </button>
             </li>
         </ul>
@@ -130,7 +136,9 @@
 
     <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
+        const T = {{ t | tojson }};
         const uuid = "{{ data.uuid }}";
+        const lang = "{{ lang }}";
         let data = {{ data | tojson }};
 
         // Theme toggle
@@ -183,9 +191,9 @@
         function update_column_count(visible, total) {
             const countElement = document.getElementById('column-count');
             if (visible < total) {
-                countElement.textContent = `${visible} von ${total} Spalten angezeigt`;
+                countElement.textContent = T.columns_shown_filtered.replace('${visible}', visible).replace('${total}', total);
             } else {
-                countElement.textContent = `${total} Spalten verfügbar`;
+                countElement.textContent = T.columns_available.replace('${total}', total);
             }
         }
 
@@ -217,18 +225,18 @@
         function update_url() {
             const selectedColumns = get_selected_columns();
             const configParam = encodeURIComponent(selectedColumns.join(','));
-            const url = window.location.origin + '/' + uuid + '?configuration=' + configParam;
+            const url = window.location.origin + '/' + lang + '/' + uuid + '?configuration=' + configParam;
             document.getElementById('shareable-url').value = url;
         }
 
         function view_chart() {
             const selectedColumns = get_selected_columns();
             if (selectedColumns.length === 0) {
-                alert('Bitte wählen Sie mindestens eine Spalte aus.');
+                alert(T.select_at_least_one);
                 return;
             }
             const configParam = encodeURIComponent(selectedColumns.join(','));
-            window.location.href = '/' + uuid + '?configuration=' + configParam;
+            window.location.href = '/' + lang + '/' + uuid + '?configuration=' + configParam;
         }
 
         function copy_link() {
@@ -238,7 +246,7 @@
             navigator.clipboard.writeText(urlField.value).then(() => {
                 const button = event.target.closest('button');
                 const originalHTML = button.innerHTML;
-                button.innerHTML = '<i class="bi bi-check"></i> Kopiert!';
+                button.innerHTML = '<i class="bi bi-check"></i> ' + T.copied;
                 button.classList.add('btn-success');
                 button.classList.remove('btn-outline-secondary');
                 setTimeout(() => {

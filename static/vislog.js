@@ -98,9 +98,9 @@ function filter_columns() {
 function update_column_count(visible, total) {
     const countElement = document.getElementById('column-count');
     if (visible < total) {
-        countElement.textContent = `${visible} von ${total} Spalten angezeigt`;
+        countElement.textContent = T.columns_shown_filtered.replace('${visible}', visible).replace('${total}', total);
     } else {
-        countElement.textContent = `${total} Spalten verfügbar`;
+        countElement.textContent = T.columns_available.replace('${total}', total);
     }
 }
 
@@ -263,7 +263,7 @@ function _addInfoButtons(tree, apiDocs, hwVersion) {
         bodyHtml += `<p class="field-info-desc">${_escapeHtml(fieldEntry.desc)}</p>`;
 
         if (fieldEntry.unit) {
-            bodyHtml += `<p class="field-info-unit">Einheit: <strong>${_escapeHtml(fieldEntry.unit.name)}</strong> (${_escapeHtml(fieldEntry.unit.abbr)})</p>`;
+            bodyHtml += `<p class="field-info-unit">${_escapeHtml(T.popover_unit)}: <strong>${_escapeHtml(fieldEntry.unit.name)}</strong> (${_escapeHtml(fieldEntry.unit.abbr)})</p>`;
         }
 
         if (fieldEntry.constants && fieldEntry.constants.length > 0) {
@@ -272,7 +272,7 @@ function _addInfoButtons(tree, apiDocs, hwVersion) {
                 c.version === -1 || hwVersion === -1 || (c.version & hwVersion) !== 0
             );
             if (relevantConsts.length > 0) {
-                bodyHtml += `<div class="field-info-constants"><strong>Werte:</strong><table class="field-info-table">`;
+                bodyHtml += `<div class="field-info-constants"><strong>${_escapeHtml(T.popover_values)}</strong><table class="field-info-table">`;
                 for (const c of relevantConsts) {
                     bodyHtml += `<tr><td class="field-info-val">${_escapeHtml(String(c.val))}</td><td>${_escapeHtml(c.desc)}</td></tr>`;
                 }
@@ -324,21 +324,21 @@ function make_jsonview(json, selector, options = {}) {
     controls.className = 'json-controls';
     controls.innerHTML = `
         <div class="json-search-container">
-            <input type="text" class="json-search form-control" placeholder="Search configurations... (Enter: next, Shift+Enter: previous)" />
+            <input type="text" class="json-search form-control" placeholder="${T.search_placeholder}" />
             <div class="search-results-count"></div>
         </div>
         <div class="json-filters-actions">
             <div class="json-filters btn-group btn-group-sm">
-                <button class="btn btn-outline-secondary active" data-filter="all" title="Show all configurations">All</button>
-                <button class="btn btn-outline-secondary" data-filter="modified" title="Show only modified configurations">Modified</button>
-                <button class="btn btn-outline-secondary" data-filter="numbers" title="Show only numeric values">Numbers</button>
-                <button class="btn btn-outline-secondary" data-filter="strings" title="Show only string values">Strings</button>
-                <button class="btn btn-outline-secondary" data-filter="booleans" title="Show only boolean values">Booleans</button>
-                <button class="btn btn-outline-secondary" data-filter="objects" title="Show only object/array values">Objects</button>
+                <button class="btn btn-outline-secondary active" data-filter="all" title="${T.filter_all_title}">${T.filter_all}</button>
+                <button class="btn btn-outline-secondary" data-filter="modified" title="${T.filter_modified_title}">${T.filter_modified}</button>
+                <button class="btn btn-outline-secondary" data-filter="numbers" title="${T.filter_numbers_title}">${T.filter_numbers}</button>
+                <button class="btn btn-outline-secondary" data-filter="strings" title="${T.filter_strings_title}">${T.filter_strings}</button>
+                <button class="btn btn-outline-secondary" data-filter="booleans" title="${T.filter_booleans_title}">${T.filter_booleans}</button>
+                <button class="btn btn-outline-secondary" data-filter="objects" title="${T.filter_objects_title}">${T.filter_objects}</button>
             </div>
             <div class="json-actions btn-group btn-group-sm">
-                <button class="btn btn-outline-primary" onclick="expandAllJson('${selector}')" title="Expand all nodes">Expand All</button>
-                <button class="btn btn-outline-primary" onclick="collapseAllJson('${selector}')" title="Collapse all nodes">Collapse All</button>
+                <button class="btn btn-outline-primary" onclick="expandAllJson('${selector}')" title="${T.expand_all_title}">${T.expand_all}</button>
+                <button class="btn btn-outline-primary" onclick="collapseAllJson('${selector}')" title="${T.collapse_all_title}">${T.collapse_all}</button>
             </div>
         </div>
     `;
@@ -352,13 +352,13 @@ function make_jsonview(json, selector, options = {}) {
     legend.className = 'json-legend';
     legend.innerHTML = `
         <span class="json-legend-item">
-            <span class="json-legend-swatch json-legend-modified"></span> Konfiguration geändert
+            <span class="json-legend-swatch json-legend-modified"></span> ${T.legend_modified}
         </span>
         <span class="json-legend-item">
-            <span class="json-legend-swatch json-legend-important"></span> Konfiguration geändert aber nicht gespeichert
+            <span class="json-legend-swatch json-legend-important"></span> ${T.legend_important}
         </span>
         <span class="json-legend-item">
-            <i class="bi bi-info-circle json-legend-info-icon"></i> API-Dokumentation verfügbar
+            <i class="bi bi-info-circle json-legend-info-icon"></i> ${T.legend_info}
         </span>
     `;
 
@@ -448,7 +448,7 @@ function make_jsonview(json, selector, options = {}) {
                 }
             });
 
-            resultsCount.textContent = `${searchResults.length} matches`;
+            resultsCount.textContent = `${searchResults.length} ${T.matches}`;
             if (searchResults.length > 0) {
                 currentSearchIndex = 0;
                 searchResults[0].classList.add('search-current');
@@ -476,7 +476,7 @@ function make_jsonview(json, selector, options = {}) {
             searchResults[currentSearchIndex].classList.add('search-current');
             searchResults[currentSearchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-            resultsCount.textContent = `${currentSearchIndex + 1} of ${searchResults.length} matches`;
+            resultsCount.textContent = `${currentSearchIndex + 1} ${T.of} ${searchResults.length} ${T.matches}`;
         }
     });
 
@@ -623,7 +623,7 @@ function vislog_protocol(data) {
             plugins: {
                 title: {
                     display: true,
-                    text: 'Ladeprotokoll',
+                    text: T.chart_title,
                     color: '#f0f0f0'
                 },
                 tooltip: {

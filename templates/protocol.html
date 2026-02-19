@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de" data-bs-theme="dark">
+<html lang="{{ lang }}" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WARP Charger Protokoll-Visualisierer</title>
+    <title>{{ t.page_title_protocol }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
@@ -19,7 +19,7 @@
     <!-- Warning banner for truncated CSV data -->
     <div class="alert alert-warning alert-dismissible fade show m-2" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
-        <strong>Achtung:</strong> {{ data.dropped_lines_count }} Zeilen wurden aus den CSV-Daten entfernt. Das Ladeprotokoll ist unvollständig.
+        <strong>{{ t.warning_label }}</strong> {{ t.dropped_lines_warning.replace('${count}', data.dropped_lines_count | string) }}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     {% endif %}
@@ -30,19 +30,22 @@
             <div class="card flex-grow-1">
                 <div class="card-body p-3">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                        <h6 class="card-title mb-0">Angezeigte Spalten ({{ data.selected_column_labels|length }})</h6>
+                        <h6 class="card-title mb-0">{{ t.columns_shown }} ({{ data.selected_column_labels|length }})</h6>
                         <div class="d-flex flex-wrap align-items-center gap-2">
                             <div class="form-check form-check-inline mb-0">
                                 <input class="form-check-input" type="checkbox" id="log-axis" checked onchange="log_axis_clicked();">
-                                <label class="form-check-label small" for="log-axis">Y-Achse logarithmisch</label>
+                                <label class="form-check-label small" for="log-axis">{{ t.log_axis }}</label>
                             </div>
-                            <button onclick="reset_zoom()" class="btn btn-sm btn-outline-secondary" title="Zur ursprünglichen Ansicht zurückkehren">
-                                <i class="bi bi-arrows-angle-expand"></i> Zoom zurücksetzen
+                            <button onclick="reset_zoom()" class="btn btn-sm btn-outline-secondary" title="{{ t.reset_zoom_title }}">
+                                <i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}
                             </button>
                             <a href="javascript:void(0)" onclick="go_back_to_config()" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-gear"></i> Spalten ändern
+                                <i class="bi bi-gear"></i> {{ t.change_columns }}
                             </a>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="Toggle dark/light mode">
+                            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
+                                {{ 'EN' if lang == 'de' else 'DE' }}
+                            </a>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
                                 <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
                                 <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
                             </button>
@@ -63,29 +66,29 @@
         <canvas id="warp_chart"></canvas>
     </div>
     <div class="zoom-hint text-center text-secondary bg-body-tertiary border-top py-2">
-        <i class="bi bi-info-circle"></i> Ziehen zum Zoomen | Strg + Ziehen zum Verschieben
+        <i class="bi bi-info-circle"></i> {{ t.zoom_hint }}
     </div>
 
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link active" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
-                Konfiguration vor dem Ladeprotokoll
+                {{ t.tab_config_before }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
-                Konfiguration nach dem Ladeprotokoll
+                {{ t.tab_config_after }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
-                Log vor dem Ladeprotokoll
+                {{ t.tab_log_before }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
-                Log nach dem Ladeprotokoll
+                {{ t.tab_log_after }}
             </button>
         </li>
     </ul>
@@ -105,18 +108,21 @@
 
     <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
     <script>
+        const T = {{ t | tojson }};
         let data = {{ data | tojson}};
 
         function go_back_to_config() {
             const pathParts = window.location.pathname.split('/');
-            const uuid = pathParts[1];
+            // pathParts: ['', lang, uuid, ...]
+            const lang = pathParts[1];
+            const uuid = pathParts[2];
             // Pass the current configuration as 'selected' param (not 'configuration')
             // so the config page can restore the selection without triggering chart view
             const currentConfig = new URLSearchParams(window.location.search).get('configuration');
             if (currentConfig) {
-                window.location.href = '/' + uuid + '?selected=' + encodeURIComponent(currentConfig);
+                window.location.href = '/' + lang + '/' + uuid + '?selected=' + encodeURIComponent(currentConfig);
             } else {
-                window.location.href = '/' + uuid;
+                window.location.href = '/' + lang + '/' + uuid;
             }
         }
 
