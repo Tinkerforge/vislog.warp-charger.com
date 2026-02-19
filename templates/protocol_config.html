@@ -126,10 +126,10 @@
             <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
             </div>
             <div class="tab-pane fade p-3" id="before-protocol-log" role="tabpanel">
-                <textarea id="before-protocol-log-text" class="form-control log-textarea" rows="20" readonly>{{ data.before_protocol_log }}</textarea>
+                <textarea id="before-protocol-log-text" class="form-control log-textarea" rows="20" readonly></textarea>
             </div>
             <div class="tab-pane fade p-3" id="after-protocol-log" role="tabpanel">
-                <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="20" readonly>{{ data.after_protocol_log }}</textarea>
+                <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="20" readonly></textarea>
             </div>
         </div>
     </div>
@@ -140,35 +140,6 @@
         const uuid = "{{ data.uuid }}";
         const lang = "{{ lang }}";
         let data = {{ data | tojson }};
-
-        // Theme toggle
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-bs-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        }
-
-        function updateThemeIcon(theme) {
-            const lightIcon = document.getElementById('theme-icon-light');
-            const darkIcon = document.getElementById('theme-icon-dark');
-            if (theme === 'dark') {
-                lightIcon.classList.add('d-none');
-                darkIcon.classList.remove('d-none');
-            } else {
-                lightIcon.classList.remove('d-none');
-                darkIcon.classList.add('d-none');
-            }
-        }
-
-        // Load saved theme
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.documentElement.setAttribute('data-bs-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        })();
 
         function filter_columns() {
             const searchTerm = document.getElementById('column-search').value.toLowerCase();
@@ -282,6 +253,9 @@
                 : {};
             make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
             make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
+
+            document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
+            document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
 
             update_column_count(data.column_metadata.length, data.column_metadata.length);
             update_url();

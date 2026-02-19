@@ -126,30 +126,8 @@
             }
         }
 
-        // Theme toggle
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-bs-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-            updateChartTheme(newTheme);
-        }
-
-        function updateThemeIcon(theme) {
-            const lightIcon = document.getElementById('theme-icon-light');
-            const darkIcon = document.getElementById('theme-icon-dark');
-            if (theme === 'dark') {
-                lightIcon.classList.add('d-none');
-                darkIcon.classList.remove('d-none');
-            } else {
-                lightIcon.classList.remove('d-none');
-                darkIcon.classList.add('d-none');
-            }
-        }
-
-        function updateChartTheme(theme) {
+        // Called by toggleTheme() in vislog.js via the onThemeChanged hook
+        function onThemeChanged(theme) {
             if (typeof chart !== 'undefined' && chart) {
                 const textColor = theme === 'dark' ? '#f0f0f0' : '#212529';
                 const gridColor = theme === 'dark' ? '#3a3a3a' : '#dee2e6';
@@ -164,18 +142,11 @@
             }
         }
 
-        // Load saved theme
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.documentElement.setAttribute('data-bs-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        })();
-
         // Initialize after DOM loaded
         document.addEventListener('DOMContentLoaded', function() {
             vislog_protocol(data);
             const savedTheme = localStorage.getItem('theme') || 'dark';
-            setTimeout(() => updateChartTheme(savedTheme), 100);
+            setTimeout(() => onThemeChanged(savedTheme), 100);
         });
     </script>
 </body>

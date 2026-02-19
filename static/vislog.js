@@ -1,26 +1,48 @@
 let chart  = undefined;
 let config = undefined;
-let originalDatasets = undefined;
 
-function open_tab(evt, tab) {
-    var i, tabcontent, tablinks;
-
-    // Get all elements with class="tabcontent" and hide them
-    tabcontent = document.getElementsByClassName("tabcontent");
-    for (i = 0; i < tabcontent.length; i++) {
-        tabcontent[i].style.display = "none";
+// ---------------------------------------------------------------------------
+// Theme toggle (shared across all pages)
+// ---------------------------------------------------------------------------
+function toggleTheme() {
+    const html = document.documentElement;
+    const currentTheme = html.getAttribute('data-bs-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-bs-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateThemeIcon(newTheme);
+    // Hook for pages that need extra work (e.g. chart colours)
+    if (typeof onThemeChanged === 'function') {
+        onThemeChanged(newTheme);
     }
-
-    // Get all elements with class="tablinks" and remove the class "active"
-    tablinks = document.getElementsByClassName("tablinks");
-    for (i = 0; i < tablinks.length; i++) {
-        tablinks[i].className = tablinks[i].className.replace(" active", "");
-    }
-
-    // Show the current tab, and add an "active" class to the button that opened the tab
-    document.getElementById(tab).style.display = "block";
-    evt.currentTarget.className += " active";
 }
+
+function updateThemeIcon(theme) {
+    const lightIcon = document.getElementById('theme-icon-light');
+    const darkIcon = document.getElementById('theme-icon-dark');
+    if (!lightIcon || !darkIcon) return;
+    if (theme === 'dark') {
+        lightIcon.classList.add('d-none');
+        darkIcon.classList.remove('d-none');
+    } else {
+        lightIcon.classList.remove('d-none');
+        darkIcon.classList.add('d-none');
+    }
+}
+
+// Apply saved theme immediately (before DOMContentLoaded)
+(function() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-bs-theme', savedTheme);
+    // Icon update deferred until DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            updateThemeIcon(savedTheme);
+        });
+    } else {
+        updateThemeIcon(savedTheme);
+    }
+})();
 
 function log_axis_clicked() {
     checkbox = document.getElementById('log-axis');
@@ -49,91 +71,6 @@ function log_axis_clicked() {
         }
     }
     chart = new Chart(document.getElementById('warp_chart'), config);
-}
-
-function toggle_column_visibility(column_name, visible) {
-    const datasetIndex = config.data.datasets.findIndex(dataset =>
-        dataset.csv_column === column_name
-    );
-
-    if (datasetIndex !== -1) {
-        if (visible) {
-            // Show the dataset
-            config.data.datasets[datasetIndex].hidden = false;
-        } else {
-            // Hide the dataset
-            config.data.datasets[datasetIndex].hidden = true;
-        }
-        chart.update('none'); // Update without animation for better performance
-    }
-}
-
-function toggle_all_columns(visible) {
-    const checkboxes = document.querySelectorAll('#column-checkboxes input[type="checkbox"]:not([style*="display: none"])');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = visible;
-        const columnName = checkbox.dataset.column;
-        toggle_column_visibility(columnName, visible);
-    });
-}
-
-function filter_columns() {
-    const searchTerm = document.getElementById('column-search').value.toLowerCase();
-    const columnItems = document.querySelectorAll('.column-item');
-    let visibleCount = 0;
-
-    columnItems.forEach(item => {
-        const label = item.querySelector('label').textContent.toLowerCase();
-        if (label.includes(searchTerm)) {
-            item.style.display = 'flex';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
-    });
-
-    update_column_count(visibleCount, columnItems.length);
-}
-
-function update_column_count(visible, total) {
-    const countElement = document.getElementById('column-count');
-    if (visible < total) {
-        countElement.textContent = T.columns_shown_filtered.replace('${visible}', visible).replace('${total}', total);
-    } else {
-        countElement.textContent = T.columns_available.replace('${total}', total);
-    }
-}
-
-function create_column_selector(datasets) {
-    const container = document.getElementById('column-checkboxes');
-    container.innerHTML = '';
-
-    datasets.forEach((dataset, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'column-item';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'col-' + index;
-        checkbox.dataset.column = dataset.csv_column;
-        checkbox.checked = !dataset.hidden;
-
-        checkbox.addEventListener('change', function() {
-            toggle_column_visibility(dataset.csv_column, this.checked);
-        });
-
-        const label = document.createElement('label');
-        label.htmlFor = checkbox.id;
-        label.textContent = dataset.label;
-        label.title = dataset.label; // Add tooltip for long names
-
-        wrapper.appendChild(checkbox);
-        wrapper.appendChild(label);
-        container.appendChild(wrapper);
-    });
-
-    // Initialize count display
-    update_column_count(datasets.length, datasets.length);
 }
 
 function _detectHwVersion(json) {
@@ -595,9 +532,6 @@ function collapseAllJson(selector) {
 }
 
 function vislog_protocol(data) {
-    // Store original datasets for reference
-    originalDatasets = JSON.parse(JSON.stringify(data.chart.datasets));
-
     // Add csv_column property to datasets if not present
     data.chart.datasets.forEach((dataset, index) => {
         if (!dataset.csv_column) {
@@ -682,11 +616,6 @@ function vislog_protocol(data) {
     };
     chart = new Chart(document.getElementById('warp_chart'), config);
 
-    // Only create column selector if the element exists (for backward compatibility)
-    if (document.getElementById('column-checkboxes')) {
-        create_column_selector(data.chart.datasets);
-    }
-
     // Detect hardware version from either before or after protocol JSON
     const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
     const hwVersion = _detectHwVersion(protocolJson);
@@ -704,7 +633,9 @@ function reset_zoom() {
     if (chart) {
         chart.resetZoom();
     }
-}function vislog_report(data) {
+}
+
+function vislog_report(data) {
     const hwVersion = _detectHwVersion(data.report_json);
     const jsonviewOpts = data.api_constants
         ? { apiConstants: data.api_constants, hwVersion: hwVersion }
@@ -719,16 +650,15 @@ function reset_zoom() {
         traceText.value = data.report_trace;
     }
 
-    // Coredump is now rendered server-side, no JS needed
-
-    // Store tree reference for report JSON
-    setTimeout(() => {
-        const reportContainer = document.querySelector('#report-json');
-        if (reportContainer && reportContainer.querySelector('.enhanced-json-viewer')) {
-            const tree = reportContainer._jsonTree;
-            if (tree) {
-                reportContainer._jsonTree = tree;
+    // Populate module trace textareas (filled via JS to avoid HTML injection in <textarea>)
+    if (data.trace_modules) {
+        for (const [moduleName, moduleContent] of Object.entries(data.trace_modules)) {
+            const el = document.getElementById('trace-' + moduleName + '-text');
+            if (el) {
+                el.value = moduleContent;
             }
         }
-    }, 100);
+    }
+
+    // Coredump is now rendered server-side, no JS needed
 }

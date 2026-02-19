@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from flask import Flask, request, render_template, abort, redirect, url_for
+from werkzeug.exceptions import RequestEntityTooLarge
 import shortuuid
 import os
 import sys
@@ -15,6 +16,7 @@ import re
 from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +44,13 @@ def _detect_language():
             best_lang = lang_tag
             best_q = q
     return best_lang
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    lang = _detect_language()
+    return redirect(f'/{lang}/')
+
 
 # ---------------------------------------------------------------------------
 # API doc constants extraction
@@ -275,7 +284,8 @@ def read_and_preprocess_protocol(file_path):
             - data_blocks: list of strings split by '\n\n'
             - dropped_lines_count: int or None if no lines were dropped
     """
-    content = open(file_path, 'r').read()
+    with open(file_path, 'r') as fh:
+        content = fh.read()
 
     # Check for "X lines have been dropped from the following table." message
     dropped_lines_match = re.search(r'\n\n(\d+) lines have been dropped from the following table\.', content)
@@ -341,6 +351,9 @@ def index_redirect():
     if request.method == 'POST':
         # upload file flask
         f = request.files.get('file')
+        if not f or f.filename == '':
+            lang = _detect_language()
+            return redirect(f'/{lang}/')
         uuid = shortuuid.uuid()
         file_path = os.path.join(PROTOCOL_DIR, uuid)
         f.save(file_path)
@@ -358,6 +371,8 @@ def index(lang):
         abort(404)
     if request.method == 'POST':
         f = request.files.get('file')
+        if not f or f.filename == '':
+            return redirect(f'/{lang}/')
         uuid = shortuuid.uuid()
         file_path = os.path.join(PROTOCOL_DIR, uuid)
         f.save(file_path)
@@ -370,6 +385,9 @@ def index(lang):
 # Legacy route without language prefix — redirect with auto-detect
 @app.route('/<uuid>')
 def view_id_legacy(uuid):
+    # Validate UUID format to prevent path traversal
+    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
+        abort(404)
     # Don't redirect if uuid matches a language code (handled by index route)
     if uuid in SUPPORTED_LANGUAGES:
         abort(404)
@@ -385,6 +403,9 @@ def view_id_legacy(uuid):
 @app.route('/<lang>/<uuid>')
 def view_id(lang, uuid):
     if lang not in SUPPORTED_LANGUAGES:
+        abort(404)
+    # Validate UUID format to prevent path traversal
+    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
         abort(404)
     # Create the file path for the protocol
     file_path = os.path.join(PROTOCOL_DIR, uuid)
@@ -412,6 +433,9 @@ def view_id(lang, uuid):
 @app.route('/<lang>/<uuid>/chart')
 def view_chart(lang, uuid):
     if lang not in SUPPORTED_LANGUAGES:
+        abort(404)
+    # Validate UUID format to prevent path traversal
+    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
         abort(404)
     # Create the file path for the protocol
     file_path = os.path.join(PROTOCOL_DIR, uuid)
@@ -873,11 +897,6 @@ def handle_protocol_chart(data, config_param, lang, t, dropped_lines_count=None)
 
     # Render the protocol with syntax highlighting
     return render_template('protocol.html', data=chart_data, t=t, lang=lang)
-
-def handle_protocol(data, lang, t):
-    # Legacy function - now redirects to configuration page
-    # This is kept for backward compatibility, but should not be used
-    return handle_protocol_chart(data, '', lang, t)
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))

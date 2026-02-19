@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
+    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
 </head>
 <body>
     <!-- Theme Toggle & Language Switcher -->
@@ -44,34 +45,6 @@
             document.getElementById("warp-form").submit();
         };
 
-        // Theme toggle
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-bs-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        }
-
-        function updateThemeIcon(theme) {
-            const lightIcon = document.getElementById('theme-icon-light');
-            const darkIcon = document.getElementById('theme-icon-dark');
-            if (theme === 'dark') {
-                lightIcon.classList.add('d-none');
-                darkIcon.classList.remove('d-none');
-            } else {
-                lightIcon.classList.remove('d-none');
-                darkIcon.classList.add('d-none');
-            }
-        }
-
-        // Load saved theme
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.documentElement.setAttribute('data-bs-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        })();
     </script>
 </body>
 </html>

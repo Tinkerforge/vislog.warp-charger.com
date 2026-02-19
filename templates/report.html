@@ -67,7 +67,7 @@
         {% endif %}
         {% for module_name, module_content in data.trace_modules.items() %}
         <div class="tab-pane fade p-3" id="trace-{{ module_name }}" role="tabpanel">
-            <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly>{{ module_content }}</textarea>
+            <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>
         {% endfor %}
         <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
@@ -185,35 +185,6 @@
     <script>
         const T = {{ t | tojson }};
         let data = {{ data | tojson}};
-
-        // Theme toggle
-        function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-bs-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-bs-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        }
-
-        function updateThemeIcon(theme) {
-            const lightIcon = document.getElementById('theme-icon-light');
-            const darkIcon = document.getElementById('theme-icon-dark');
-            if (theme === 'dark') {
-                lightIcon.classList.add('d-none');
-                darkIcon.classList.remove('d-none');
-            } else {
-                lightIcon.classList.remove('d-none');
-                darkIcon.classList.add('d-none');
-            }
-        }
-
-        // Load saved theme
-        (function() {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.documentElement.setAttribute('data-bs-theme', savedTheme);
-            updateThemeIcon(savedTheme);
-        })();
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
