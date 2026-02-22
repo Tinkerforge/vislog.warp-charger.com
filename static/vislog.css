@@ -26,6 +26,11 @@
 }
 
 [data-bs-theme="dark"] {
+  /* Softer link blue shared with api.warp-charger.com */
+  --bs-link-color-rgb: 108, 180, 238;
+  --bs-link-color: #6cb4ee;
+  --bs-link-hover-color: #8dc4f2;
+
   --json-string: #86b25c;
   --json-number: #f9ae58;
   --json-boolean: #ec5f66;
@@ -546,6 +551,19 @@ footer a {
 
 footer a:hover {
   text-decoration: underline;
+}
+
+.footer-legal {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+}
+
+.footer-legal a {
+  opacity: 0.7;
+}
+
+.footer-legal a:hover {
+  opacity: 1;
 }
 
 @media print {

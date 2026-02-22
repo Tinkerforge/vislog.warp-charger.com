@@ -13,17 +13,14 @@ import pandas as pd
 from io import StringIO
 import urllib.parse
 import re
+import socket
 from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
 
 
-# ---------------------------------------------------------------------------
-# Language detection
-# ---------------------------------------------------------------------------
 def _detect_language():
-    """Detect language from Accept-Language header.  Returns 'de' or 'en'."""
     accept = request.headers.get('Accept-Language', '')
     # Simple parser: look for 'en' or 'de' with highest quality
     best_lang = DEFAULT_LANGUAGE
@@ -901,4 +898,19 @@ def handle_protocol_chart(data, config_param, lang, t, dropped_lines_count=None)
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))
 if __name__ == '__main__':
+    # Only scan for a free port in the main process, not in the
+    # reloader child (which inherits PORT via the environment).
+    if not os.environ.get('WERKZEUG_RUN_MAIN'):
+        while True:
+            try:
+                s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                s.bind(('::', port))
+                s.close()
+                break
+            except OSError:
+                print(f"Port {port} already in use, trying {port + 1}")
+                port += 1
+        os.environ['PORT'] = str(port)
+        print(f" * Running on http://localhost:{port}/")
+
     app.run(debug=True, host="0.0.0.0", port=port)

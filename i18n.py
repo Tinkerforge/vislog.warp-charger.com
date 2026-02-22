@@ -123,6 +123,9 @@ TRANSLATIONS = {
         'chart_voltage_minus_12v': 'Spannung -12V',
         'footer_ecosystem': 'Teil des WARP Charger Ökosystems',
         'footer_source': 'Quellcode auf GitHub',
+        'footer_legal_info': 'Impressum',
+        'footer_privacy': 'Datenschutz',
+        'footer_terms': 'AGB',
     },
     'en': {
         # --- index page ---
@@ -242,6 +245,9 @@ TRANSLATIONS = {
         'chart_voltage_minus_12v': 'Voltage -12V',
         'footer_ecosystem': 'Part of the WARP Charger ecosystem',
         'footer_source': 'Source on GitHub',
+        'footer_legal_info': 'Legal Info',
+        'footer_privacy': 'Privacy Notice',
+        'footer_terms': 'Terms & Conditions',
     },
 }
 
