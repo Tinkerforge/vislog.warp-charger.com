@@ -45,7 +45,7 @@
             </button>
         </li>
         <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
-            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
+            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
                 {{ 'EN' if lang == 'de' else 'DE' }}
             </a>
             <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">

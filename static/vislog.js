@@ -127,6 +127,14 @@ document.addEventListener('DOMContentLoaded', function() {
             tab.show();
         }
     }
+
+    // Preserve query string + hash when switching language
+    document.querySelectorAll('.btn-lang').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            window.location.href = link.getAttribute('href') + location.search + location.hash;
+        });
+    });
 });
 
 
