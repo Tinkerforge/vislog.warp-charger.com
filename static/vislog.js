@@ -952,8 +952,6 @@ function renderCmChart() {
         selected.push(cb.dataset.column);
     });
 
-    if (selected.length === 0) return;
-
     // Build timestamp lookup: sorted array of [row_idx, timestamp_string]
     // for nearest-match lookups on the x-axis
     const tsEntries = cmData.timestamps || [];
