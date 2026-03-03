@@ -13,11 +13,14 @@ import pandas as pd
 from io import StringIO
 import urllib.parse
 import re
+import math
 import socket
 from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
+
+UUID_PATTERN = re.compile(r'^[a-zA-Z0-9]+$')
 
 
 def _detect_language():
@@ -342,20 +345,22 @@ def convert_millis_to_real_time(millis_values, timestamp_info):
 
     return real_timestamps
 
+def _handle_upload(lang):
+    """Handle file upload from POST request. Returns redirect response or None."""
+    f = request.files.get('file')
+    if not f or f.filename == '':
+        return redirect(f'/{lang}/')
+    uuid = shortuuid.uuid()
+    file_path = os.path.join(PROTOCOL_DIR, uuid)
+    f.save(file_path)
+    return redirect(f'/{lang}/{uuid}')
+
 # Route for the main page
 @app.route('/', methods=['GET', 'POST'])
 def index_redirect():
     if request.method == 'POST':
-        # upload file flask
-        f = request.files.get('file')
-        if not f or f.filename == '':
-            lang = _detect_language()
-            return redirect(f'/{lang}/')
-        uuid = shortuuid.uuid()
-        file_path = os.path.join(PROTOCOL_DIR, uuid)
-        f.save(file_path)
         lang = _detect_language()
-        return redirect(f'/{lang}/{uuid}')
+        return _handle_upload(lang)
 
     # Redirect to language-prefixed index
     lang = _detect_language()
@@ -367,23 +372,17 @@ def index(lang):
     if lang not in SUPPORTED_LANGUAGES:
         abort(404)
     if request.method == 'POST':
-        f = request.files.get('file')
-        if not f or f.filename == '':
-            return redirect(f'/{lang}/')
-        uuid = shortuuid.uuid()
-        file_path = os.path.join(PROTOCOL_DIR, uuid)
-        f.save(file_path)
-        return redirect(f'/{lang}/{uuid}')
+        return _handle_upload(lang)
 
     t = get_translations(lang)
     return render_template('index.html', t=t, lang=lang)
 
 
-# Legacy route without language prefix — redirect with auto-detect
+# Legacy route without language prefix, redirect with auto-detect
 @app.route('/<uuid>')
 def view_id_legacy(uuid):
     # Validate UUID format to prevent path traversal
-    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
+    if not UUID_PATTERN.match(uuid):
         abort(404)
     # Don't redirect if uuid matches a language code (handled by index route)
     if uuid in SUPPORTED_LANGUAGES:
@@ -402,7 +401,7 @@ def view_id(lang, uuid):
     if lang not in SUPPORTED_LANGUAGES:
         abort(404)
     # Validate UUID format to prevent path traversal
-    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
+    if not UUID_PATTERN.match(uuid):
         abort(404)
     # Create the file path for the protocol
     file_path = os.path.join(PROTOCOL_DIR, uuid)
@@ -413,44 +412,29 @@ def view_id(lang, uuid):
     data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
         is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
-    except:
+    except (IndexError, TypeError):
         abort(400)
 
     if is_report:
         return handle_report(data, lang, t)
     else:
-        # Check if configuration parameter is provided
-        config_param = request.args.get('configuration')
-        if config_param:
-            return handle_protocol_chart(data, config_param, lang, t, dropped_lines_count)
-        else:
-            return handle_protocol_config(data, uuid, lang, t, dropped_lines_count)
+        # Old ?configuration= and ?selected= params are converted to hash
+        # on the client side for backward compatibility.
+        return handle_protocol(data, lang, t, dropped_lines_count)
 
-# Route to show the chart with selected columns
+# Legacy /chart route, redirect to base URL, client handles old params via hash
 @app.route('/<lang>/<uuid>/chart')
 def view_chart(lang, uuid):
     if lang not in SUPPORTED_LANGUAGES:
         abort(404)
-    # Validate UUID format to prevent path traversal
-    if not re.match(r'^[a-zA-Z0-9]+$', uuid):
+    if not UUID_PATTERN.match(uuid):
         abort(404)
-    # Create the file path for the protocol
-    file_path = os.path.join(PROTOCOL_DIR, uuid)
-    if not os.path.exists(file_path):
-        abort(404)  # Return a 404 error if the protocol does not exist
-
-    t = get_translations(lang)
-    data, dropped_lines_count = read_and_preprocess_protocol(file_path)
-    try:
-        is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
-    except:
-        abort(400)
-
-    if is_report:
-        return handle_report(data, lang, t)
-    else:
-        config_param = request.args.get('configuration', '')
-        return handle_protocol_chart(data, config_param, lang, t, dropped_lines_count)
+    # Redirect to base URL; the JS will pick up ?configuration= and convert to hash
+    qs = request.query_string.decode()
+    target = f'/{lang}/{uuid}'
+    if qs:
+        target += f'?{qs}'
+    return redirect(target)
 
 # Coredump parsing constants and helpers (based on esp32-firmware/software/coredump.py)
 TF_COREDUMP_PREFIX = b"___tf_coredump_info_start___"
@@ -617,17 +601,218 @@ def parse_coredump(coredump_blocks):
 
     return result
 
+def _detect_cm_header(lines):
+    """Scan lines for CM header format flags.
+
+    Returns (has_pv, has_phases) indicating which optional column groups
+    are present in the charge manager trace.
+    """
+    has_pv = False
+    has_phases = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('PM') or (stripped.startswith('mtr') and 'avl' in stripped):
+            if 'PV' in stripped:
+                has_pv = True
+            if 'L1' in stripped:
+                has_phases = True
+            if has_pv or has_phases:
+                break
+    return has_pv, has_phases
+
+
+# Shared name list for summary columns (raw/min/spread × total/L1-L3 + max_pv)
+_CM_SUMMARY_NAMES = [
+    f'{prefix}_{suffix}'
+    for prefix in ('raw', 'min', 'spread')
+    for suffix in ('total', 'L1', 'L2', 'L3')
+] + ['max_pv']
+
+
+def _build_cm_columns(has_pv, has_phases):
+    """Build column definitions for a charge manager trace.
+
+    Returns (columns, col_keys, summary_cols, alloc_cols) where:
+      - columns: list of {key, label, group} dicts (all columns incl. summary)
+      - col_keys: list of keys for table-data columns only
+      - summary_cols: list of keys for summary columns
+      - alloc_cols: list of keys for allocation columns
+    """
+    columns = []
+    col_keys = []
+
+    # PM columns (always present)
+    for name in ['mtr', 'avl']:
+        key = f'pm_{name}'
+        columns.append({'key': key, 'label': f'PM {name}(W)', 'group': 'PM'})
+        col_keys.append(key)
+
+    # PV columns (if PV present in header)
+    if has_pv:
+        for name in ['raw', 'max', 'min', 'spread']:
+            key = f'pv_{name}'
+            columns.append({'key': key, 'label': f'PV {name}', 'group': 'PV'})
+            col_keys.append(key)
+
+    # Phase columns
+    if has_phases:
+        for phase in ['L1', 'L2', 'L3']:
+            for name in ['meter', 'preprc', 'error', 'adjust', 'raw', 'min', 'spread']:
+                key = f'{phase.lower()}_{name}'
+                columns.append({'key': key, 'label': f'{phase} {name}', 'group': phase})
+                col_keys.append(key)
+
+    # Summary column definitions (step 0 and step 9)
+    summary_cols = []
+    for step in ['0', '9']:
+        for name in _CM_SUMMARY_NAMES:
+            key = f's{step}_{name}'
+            summary_cols.append(key)
+            columns.append({'key': key, 'label': f'Step {step} {name}', 'group': f'Step {step}'})
+
+    # Allocation columns (step 9 result)
+    alloc_cols = ['alloc_current', 'alloc_phases']
+    columns.append({'key': 'alloc_current', 'label': 'Alloc current (mA)', 'group': 'Allocation'})
+    columns.append({'key': 'alloc_phases', 'label': 'Alloc phases', 'group': 'Allocation'})
+
+    # Hysteresis column
+    columns.append({'key': 'hysteresis', 'label': 'Hysteresis', 'group': 'Summary'})
+
+    return columns, col_keys, summary_cols, alloc_cols
+
+
+def parse_charge_manager_trace(content):
+    """Parse the charge_manager trace section into structured chart data.
+
+    Returns a dict with:
+      - columns: [{key, label, group}, ...] -> metadata for each column
+      - table_data: {column_key: [values...]} -> dense arrays, one value per table row
+      - summary_data: {column_key: [[row_idx, value], ...]} -> sparse pairs
+      - timestamps: [[row_idx, "YYYY-MM-DD HH:MM:SS,mmm"], ...] -> sparse
+      - events: [[row_idx, "RECV ..."], ...] -> sparse
+      - row_count: int -> total number of table rows
+    """
+    lines = content.split('\n')
+
+    has_pv, has_phases = _detect_cm_header(lines)
+    columns, col_keys, summary_cols, alloc_cols = _build_cm_columns(has_pv, has_phases)
+    expected_cols = len(col_keys)
+
+    # --- Parse data ---
+    table_data = {k: [] for k in col_keys}
+    summary_data = {k: [] for k in summary_cols + alloc_cols + ['hysteresis']}
+    timestamps = []
+    events = []
+
+    row_idx = 0
+    in_table = False
+    step_line_re = re.compile(r'^-?\d+:')
+    timestamp_re = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})')
+    summary_re = re.compile(r'^([09]): raw\((-?\d+) (-?\d+) (-?\d+) (-?\d+)\) min\((-?\d+) (-?\d+) (-?\d+) (-?\d+)\) spread\((-?\d+) (-?\d+) (-?\d+) (-?\d+)\) max_pv (-?\d+)')
+    alloc_re = re.compile(r'^9: \[(.+)\]')
+    hysteresis_re = re.compile(r'^Hysteresis (-?\d+)')
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Skip header lines
+        if stripped.startswith('PM') or (stripped.startswith('mtr') and 'avl' in stripped):
+            in_table = True
+            continue
+
+        # Timestamp
+        ts_m = timestamp_re.match(stripped)
+        if ts_m:
+            in_table = False
+            if row_idx > 0:
+                timestamps.append([row_idx - 1, ts_m.group(1)])
+            continue
+
+        # Hysteresis
+        hyst_m = hysteresis_re.match(stripped)
+        if hyst_m:
+            if row_idx > 0:
+                summary_data['hysteresis'].append([row_idx - 1, int(hyst_m.group(1))])
+            continue
+
+        # Summary lines (0: raw(...) or 9: raw(...))
+        sum_m = summary_re.match(stripped)
+        if sum_m:
+            step = sum_m.group(1)
+            vals = [int(sum_m.group(i)) for i in range(2, 15)]
+            prefix = f's{step}_'
+            if row_idx > 0:
+                for name, val in zip(_CM_SUMMARY_NAMES, vals):
+                    summary_data[prefix + name].append([row_idx - 1, val])
+            continue
+
+        # Allocation result: 9: [ ... ]
+        alloc_m = alloc_re.match(stripped)
+        if alloc_m:
+            inner = alloc_m.group(1).strip()
+            # Parse "0 32000@3p" or just "0" (no allocation)
+            at_m = re.search(r'(\d+)@(\d+)p', inner)
+            if at_m and row_idx > 0:
+                summary_data['alloc_current'].append([row_idx - 1, int(at_m.group(1))])
+                summary_data['alloc_phases'].append([row_idx - 1, int(at_m.group(2))])
+            elif row_idx > 0:
+                summary_data['alloc_current'].append([row_idx - 1, 0])
+                summary_data['alloc_phases'].append([row_idx - 1, 0])
+            continue
+
+        # RECV event lines
+        if stripped.startswith('RECV'):
+            events.append([row_idx, stripped])
+            continue
+
+        # Skip section markers and algorithm step lines
+        if stripped.startswith('__') and stripped.endswith('__'):
+            continue
+        if step_line_re.match(stripped) and '|' not in stripped:
+            continue
+        if stripped.startswith('Wnd') or stripped.startswith('Calc Wnd'):
+            continue
+        # Skip deeply indented algorithm text (5+ leading spaces with non-table content)
+        if len(line) > 0 and len(line) - len(line.lstrip()) >= 5 and '(' in stripped:
+            continue
+
+        # Table data rows, try to parse as numbers separated by | groups
+        if in_table:
+            # Remove | separators and split into numbers
+            parts = stripped.replace('|', ' ').split()
+            try:
+                values = [int(p) for p in parts]
+            except ValueError:
+                continue
+
+            if len(values) == expected_cols:
+                for key, val in zip(col_keys, values):
+                    table_data[key].append(val)
+                row_idx += 1
+
+    return {
+        'columns': columns,
+        'table_data': table_data,
+        'summary_data': {k: v for k, v in summary_data.items() if v},
+        'timestamps': timestamps,
+        'events': events,
+        'row_count': row_idx,
+    }
+
+
 def handle_report(data, lang, t):
     try:
         # Fix json syntax error that can happen in report
         data_json     = data[1].replace('": ,', '": {},')
         report_json   = json.loads(data_json)
-    except:
+    except (IndexError, KeyError, json.JSONDecodeError, TypeError, ValueError):
         report_json   = {}
 
     try:
         report_log    = data[2]
-    except:
+    except (IndexError, KeyError):
         report_log    = ""
 
     inside_trace = False
@@ -686,40 +871,49 @@ def handle_report(data, lang, t):
     # Parse coredump for structured display
     coredump_info = parse_coredump(report_dump_blocks)
 
+    # Parse charge_manager trace for structured chart visualization
+    cm_parsed = None
+    if 'charge_manager' in trace_modules:
+        try:
+            cm_parsed = parse_charge_manager_trace(trace_modules['charge_manager'])
+            if cm_parsed['row_count'] == 0:
+                cm_parsed = None
+        except Exception as e:
+            print(f"Warning: Failed to parse charge_manager trace: {e}")
+            cm_parsed = None
+
     data = {
         'report_json':  report_json,
         'report_log':   report_log,
         'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
         'trace_modules': trace_modules,
         'coredump_info': coredump_info,
+        'cm_parsed': cm_parsed,
         'api_constants': api_constants[lang],
     }
 
     # Render the protocol with syntax highlighting
     return render_template('report.html', data=data, t=t, lang=lang)
 
+def _get_block(data, idx, default, parse_json=False):
+    """Safely get a block from protocol data by index, with optional JSON parsing."""
+    try:
+        value = data[idx]
+        return json.loads(value) if parse_json else value
+    except (IndexError, KeyError, json.JSONDecodeError, TypeError, ValueError):
+        return default
+
+def _sanitize_for_json(values):
+    """Replace NaN/inf values with None for JSON serialization."""
+    return [None if not math.isfinite(v) else v for v in values]
+
 def parse_protocol_data(data):
     # Parse protocol data and extract available columns
-    try:
-        before_protocol_json = json.loads(data[0])
-    except:
-        before_protocol_json = {}
-    try:
-        before_protocol_log  = data[1]
-    except:
-        before_protocol_log  = ""
-    try:
-        protocol_csv         = data[2]
-    except:
-        protocol_csv         = ""
-    try:
-        after_protocol_json  = json.loads(data[3])
-    except:
-        after_protocol_json  = {}
-    try:
-        after_protocol_log   = data[4]
-    except:
-        after_protocol_log   = ""
+    before_protocol_json = _get_block(data, 0, {}, parse_json=True)
+    before_protocol_log  = _get_block(data, 1, "")
+    protocol_csv         = _get_block(data, 2, "")
+    after_protocol_json  = _get_block(data, 3, {}, parse_json=True)
+    after_protocol_log   = _get_block(data, 4, "")
 
     try:
         # Get timestamp data from CSV
@@ -731,7 +925,7 @@ def parse_protocol_data(data):
 
         # Convert millis to real timestamps
         millis = convert_millis_to_real_time(df['millis'].tolist(), timestamp_info)
-    except:
+    except (KeyError, ValueError, TypeError, pd.errors.EmptyDataError):
         millis = []
         df = None
         timestamp_info = None
@@ -756,144 +950,128 @@ def parse_protocol_data(data):
         'has_real_timestamps': timestamp_info is not None
     }
 
-def handle_protocol_config(data, uuid, lang, t, dropped_lines_count=None):
-    # Show configuration page where user can select columns
-    parsed = parse_protocol_data(data)
+def handle_protocol(data, lang, t, dropped_lines_count=None):
+    """Unified protocol handler: sends ALL column data + metadata to a single template.
 
+    The client-side JS handles column selection, chart rendering, and URL hash
+    persistence. Old ``?configuration=`` and ``?selected=`` query params are
+    forwarded to the template so the JS can convert them to hash state on load.
+    """
+    parsed = parse_protocol_data(data)
     chart_config = get_chart_config(t)
 
-    # Create column metadata for the configuration page
-    column_metadata = []
-
-    # Add predefined columns from chart_config
+    # Build column metadata and pre-compute all column data (with transforms)
     predefined_columns = {cc['csv_title']: cc for cc in chart_config}
 
-    # First, add predefined columns in the order they appear in chart_config
+    column_metadata = []  # sent to template for checkbox rendering
+    all_column_data = {}  # column_name -> [values...], sent to template for chart
+
+    # --- Predefined columns first (in chart_config order) ---
     for cc in chart_config:
         col_name = cc['csv_title']
-        if col_name in parsed['available_columns']:
+        if col_name not in parsed['available_columns']:
+            continue
+        if parsed['df'] is None:
+            continue
+
+        try:
+            col = parsed['df'][col_name]
+            edit_func = cc.get('edit_func')
+            if edit_func:
+                values = edit_func(col)
+            else:
+                values = list(col)
+
+            # Convert NaN/inf to None for JSON serialization
+            values = _sanitize_for_json(values)
+
             column_metadata.append({
                 'name': col_name,
                 'label': cc.get('label', col_name),
                 'predefined': True,
-                'hidden_by_default': cc.get('hidden', False)
+                'hidden_by_default': cc.get('hidden', False),
+                'group': t['group_predefined'],
+                'group_order': 0,
             })
+            all_column_data[col_name] = values
+        except Exception as e:
+            print(f"Warning: Failed to process predefined column {col_name}: {e}")
 
-    # Then, add non-predefined columns
+    # --- Non-predefined columns ---
     for col_name in parsed['available_columns']:
-        if col_name not in predefined_columns:
-            # Check if column is numeric
-            is_numeric = True
-            if parsed['df'] is not None:
-                try:
-                    col = parsed['df'][col_name]
-                    is_numeric = col.dtype not in ['object', 'string']
-                except:
-                    is_numeric = False
+        if col_name in predefined_columns:
+            continue
+        if parsed['df'] is None:
+            continue
 
-            if is_numeric:
-                column_metadata.append({
-                    'name': col_name,
-                    'label': col_name,
-                    'predefined': False,
-                    'hidden_by_default': True
-                })
-
-    config_data = {
-        'uuid': uuid,
-        'column_metadata': column_metadata,
-        'before_protocol_json': parsed['before_protocol_json'],
-        'after_protocol_json': parsed['after_protocol_json'],
-        'before_protocol_log': parsed['before_protocol_log'],
-        'after_protocol_log': parsed['after_protocol_log'],
-        'dropped_lines_count': dropped_lines_count,
-        'api_constants': api_constants[lang],
-    }
-
-    return render_template('protocol_config.html', data=config_data, t=t, lang=lang)
-
-def handle_protocol_chart(data, config_param, lang, t, dropped_lines_count=None):
-    # Show chart with only selected columns
-    parsed = parse_protocol_data(data)
-
-    chart_config = get_chart_config(t)
-
-    # Decode configuration parameter
-    selected_columns = []
-    if config_param:
         try:
-            # Decode URL-encoded column names
-            selected_columns = urllib.parse.unquote(config_param).split(',')
-            selected_columns = [col.strip() for col in selected_columns if col.strip()]
-        except:
-            selected_columns = []
+            col = parsed['df'][col_name]
+            if col.dtype in ['object', 'string']:
+                continue  # skip non-numeric
 
-    # If no columns selected, show default visible columns
-    if not selected_columns:
-        selected_columns = [cc['csv_title'] for cc in chart_config if not cc.get('hidden', False)]
+            # Skip all-NaN columns (section headings like GPIOs, VOLTAGES, etc.)
+            if col.isna().all():
+                continue
 
-    dataset = []
+            values = list(col)
+            values = _sanitize_for_json(values)
 
-    # Process only selected columns
-    predefined_columns = {cc['csv_title']: cc for cc in chart_config}
+            # Assign group based on column name patterns.
+            # Check gpio_ and slot_ prefixes first (more specific), then
+            # voltage-related patterns which use substring matching.
+            lower = col_name.lower()
+            if lower.startswith('gpio_'):
+                group = t['group_gpio']
+                group_order = 2
+            elif lower.startswith('slot_'):
+                group = t['group_slots']
+                group_order = 3
+            elif 'voltage' in lower or 'cp_' in lower or 'pp_' in lower or lower.startswith('adc_'):
+                group = t['group_voltages']
+                group_order = 1
+            else:
+                group = t['group_other']
+                group_order = 4
 
-    for col_name in selected_columns:
-        if parsed['df'] is not None and col_name in parsed['df'].columns:
-            try:
-                col = parsed['df'][col_name]
+            column_metadata.append({
+                'name': col_name,
+                'label': col_name,
+                'predefined': False,
+                'hidden_by_default': True,
+                'group': group,
+                'group_order': group_order,
+            })
+            all_column_data[col_name] = values
+        except Exception as e:
+            print(f"Warning: Failed to process column {col_name}: {e}")
 
-                # Use predefined config if available
-                if col_name in predefined_columns:
-                    cc = predefined_columns[col_name]
-                    new_data = {
-                        'label': cc.get('label', col_name),
-                        'csv_column': col_name
-                    }
+    # Split large groups into two equal columns
+    for order, threshold in [(2, 16), (3, 6)]:  # GPIO, Slots
+        indices = [i for i, m in enumerate(column_metadata) if m.get('group_order') == order]
+        if len(indices) > threshold:
+            mid = len(indices) // 2
+            for i in indices[mid:]:
+                column_metadata[i]['group_order'] = order + 0.5
 
-                    edit_func = cc.get('edit_func')
-                    if edit_func:
-                        new_data['data'] = edit_func(col)
-                    else:
-                        new_data['data'] = list(col)
-                else:
-                    # Skip non-numeric columns
-                    if col.dtype in ['object', 'string']:
-                        continue
+    # Carry forward old query params so the client JS can convert them to hash
+    legacy_config = request.args.get('configuration', '')
+    legacy_selected = request.args.get('selected', '')
 
-                    new_data = {
-                        'label': col_name,
-                        'csv_column': col_name,
-                        'data': list(col)
-                    }
-
-                dataset.append(new_data)
-            except Exception as e:
-                print(f"Error processing column {col_name}: {e}")
-                pass
-
-    # Show 0 values as 0.01 since chart.js can't show 0 in log view...
-    # see https://github.com/chartjs/Chart.js/issues/9629
-    for d in dataset:
-        d['data'] = list(map(lambda v: 0.01 if v == 0 else v, d['data']))
-
-    # Create list of human-readable column labels for display
-    selected_column_labels = [d['label'] for d in dataset]
-
-    chart_data = {
-        'chart': {'labels': parsed['millis'], 'datasets': dataset},
-        'selected_columns': selected_columns,
-        'selected_column_labels': selected_column_labels,
-        'configuration': config_param,
+    protocol_data = {
+        'column_metadata': column_metadata,
+        'all_column_data': all_column_data,
+        'labels': parsed['millis'],
         'before_protocol_json': parsed['before_protocol_json'],
         'after_protocol_json': parsed['after_protocol_json'],
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': dropped_lines_count,
         'api_constants': api_constants[lang],
+        'legacy_config': legacy_config,
+        'legacy_selected': legacy_selected,
     }
 
-    # Render the protocol with syntax highlighting
-    return render_template('protocol.html', data=chart_data, t=t, lang=lang)
+    return render_template('protocol.html', data=protocol_data, t=t, lang=lang)
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))

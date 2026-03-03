@@ -1,6 +1,3 @@
-let chart  = undefined;
-let config = undefined;
-
 // ---------------------------------------------------------------------------
 // Theme toggle (shared across all pages)
 // ---------------------------------------------------------------------------
@@ -44,33 +41,239 @@ function updateThemeIcon(theme) {
     }
 })();
 
-function log_axis_clicked() {
-    checkbox = document.getElementById('log-axis');
+// ---------------------------------------------------------------------------
+// Collapsible chart headers – toggle collapse on click, but ignore clicks
+// that land on buttons, inputs, labels or other controls in the header.
+// ---------------------------------------------------------------------------
+document.addEventListener('click', function(e) {
+    const header = e.target.closest('.chart-collapse-header');
+    if (!header) return;
+    // Ignore clicks inside the controls area
+    if (e.target.closest('.chart-header-controls')) return;
+    const targetId = header.getAttribute('aria-controls');
+    const body = document.getElementById(targetId);
+    if (!body) return;
+    const collapse = bootstrap.Collapse.getOrCreateInstance(body, {toggle: false});
+    collapse.toggle();
+    // Update aria-expanded
+    const expanded = header.getAttribute('aria-expanded') === 'true';
+    header.setAttribute('aria-expanded', String(!expanded));
+});
 
-    chart.destroy()
-    if(checkbox.checked) {
-        config.options.scales.y = {
-            display: true,
-            type: 'logarithmic',
-            ticks: {
-                color: '#f0f0f0'
-            },
-            grid: {
-                color: '#3a3a3a'
-            }
-        }
+// ---------------------------------------------------------------------------
+// Shared URL hash helpers – read/modify/write individual params without
+// clobbering unrelated ones (e.g. tab, cols, cm, log all coexist).
+// ---------------------------------------------------------------------------
+function _hashParams() {
+    return new URLSearchParams(location.hash.slice(1));
+}
+
+function _hashSet(key, value) {
+    const params = _hashParams();
+    if (value === null || value === undefined || value === '') {
+        params.delete(key);
     } else {
-        config.options.scales.y = {
-            display: true,
-            ticks: {
-                color: '#f0f0f0'
-            },
-            grid: {
-                color: '#3a3a3a'
-            }
+        params.set(key, value);
+    }
+    history.replaceState(null, '', '#' + params.toString());
+}
+
+function _parseChartHash(colsKey, logKey) {
+    const params = _hashParams();
+    const colParam = params.get(colsKey);
+    const columns = colParam ? colParam.split(',').filter(Boolean) : null;
+    const log = params.get(logKey) === '1';
+    return { columns, log };
+}
+
+function _updateChartHash(checkboxSelector, logCheckboxId, colsKey, logKey) {
+    const selected = [];
+    document.querySelectorAll(checkboxSelector + ':checked').forEach(cb => {
+        selected.push(cb.dataset.column);
+    });
+    const logCb = document.getElementById(logCheckboxId);
+    const useLog = logCb && logCb.checked;
+
+    const params = _hashParams();
+    if (selected.length > 0) {
+        params.set(colsKey, selected.join(','));
+    } else {
+        params.delete(colsKey);
+    }
+    if (useLog) {
+        params.set(logKey, '1');
+    } else {
+        params.delete(logKey);
+    }
+    history.replaceState(null, '', '#' + params.toString());
+}
+
+// ---------------------------------------------------------------------------
+// Tab persistence – save active tab in URL hash, restore on page load.
+// Works on both protocol and report pages.
+// ---------------------------------------------------------------------------
+document.addEventListener('shown.bs.tab', function(e) {
+    const tabId = e.target.id;  // e.g. "chart-tab", "config-tab"
+    if (tabId) _hashSet('tab', tabId);
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const params = _hashParams();
+    const tabId = params.get('tab');
+    if (tabId) {
+        const tabEl = document.getElementById(tabId);
+        if (tabEl) {
+            const tab = new bootstrap.Tab(tabEl);
+            tab.show();
         }
     }
-    chart = new Chart(document.getElementById('warp_chart'), config);
+});
+
+
+// ---------------------------------------------------------------------------
+// Shared chart infrastructure – colors, factory, helpers
+// ---------------------------------------------------------------------------
+const CHART_COLORS = [
+    '#0d6efd', '#fd7e14', '#198754', '#dc3545', '#6f42c1',
+    '#20c997', '#ffc107', '#0dcaf0', '#d63384', '#6c757d',
+    '#0b5ed7', '#e35d13', '#157347', '#bb2d3b', '#5a32a3',
+    '#1aa179', '#e0a800', '#0aa2c0', '#b52b6a', '#565e64',
+    '#3d8bfd', '#ff922b', '#2dce89', '#f5365c', '#8965e0',
+    '#4fd1c5', '#ffcb6b', '#45d0ff', '#e8569a', '#8898aa',
+];
+
+/**
+ * Create (or recreate) a time-series Chart.js line chart.
+ *
+ * @param {Object} cfg
+ * @param {string}        cfg.canvasId           - canvas element id
+ * @param {Chart|null}    cfg.prevChart          - previous Chart instance to destroy (or null)
+ * @param {Array}         cfg.labels             - x-axis labels
+ * @param {Array}         cfg.datasets           - Chart.js dataset objects
+ * @param {string}        cfg.titleText          - chart title
+ * @param {boolean}       cfg.useLog             - use logarithmic y-axis
+ * @param {Function}      [cfg.xTickCallback]    - custom x-axis tick callback
+ * @param {Function}      [cfg.tooltipTitleCallback] - custom tooltip title callback
+ * @param {number}        [cfg.xMaxTicksLimit]   - max x-axis tick count
+ * @returns {Chart}       the new Chart instance
+ */
+function _createTimeSeriesChart(cfg) {
+    const canvas = document.getElementById(cfg.canvasId);
+    if (!canvas) return null;
+
+    if (cfg.prevChart) {
+        cfg.prevChart.destroy();
+    }
+
+    const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const textColor = isDark ? '#f0f0f0' : '#212529';
+    const gridColor = isDark ? '#3a3a3a' : '#dee2e6';
+
+    const yScale = {
+        display: true,
+        ticks: { color: textColor },
+        grid: { color: gridColor },
+    };
+    if (cfg.useLog) {
+        yScale.type = 'logarithmic';
+    }
+
+    const xTicks = { color: textColor };
+    if (cfg.xTickCallback) xTicks.callback = cfg.xTickCallback;
+    if (cfg.xMaxTicksLimit) xTicks.maxTicksLimit = cfg.xMaxTicksLimit;
+
+    const tooltipCallbacks = {};
+    if (cfg.tooltipTitleCallback) {
+        tooltipCallbacks.title = cfg.tooltipTitleCallback;
+    }
+
+    return new Chart(canvas, {
+        type: 'line',
+        data: { labels: cfg.labels, datasets: cfg.datasets },
+        options: {
+            animation: false,
+            maintainAspectRatio: false,
+            elements: { point: { radius: 0 } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: {
+                    display: true,
+                    text: cfg.titleText,
+                    color: textColor,
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: tooltipCallbacks,
+                },
+                legend: {
+                    labels: { color: textColor, font: { size: 11 } },
+                    position: 'bottom',
+                },
+                zoom: {
+                    zoom: {
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(85, 85, 85, 0.3)',
+                            borderColor: 'rgba(85, 85, 85, 0.8)',
+                            borderWidth: 1,
+                            threshold: 20,
+                        },
+                        wheel: { enabled: false },
+                        mode: 'xy',
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'xy',
+                        modifierKey: 'ctrl',
+                        threshold: 5,
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    ticks: xTicks,
+                    grid: { color: gridColor }
+                },
+                y: yScale
+            }
+        }
+    });
+}
+
+/**
+ * Build a single Chart.js dataset object from raw data.
+ */
+function _chartDataset(label, data, colorIdx) {
+    const color = CHART_COLORS[colorIdx % CHART_COLORS.length];
+    return {
+        label: label,
+        data: data,
+        borderColor: color,
+        backgroundColor: color + '33',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0,
+        fill: false,
+    };
+}
+
+/**
+ * Select/deselect all checkboxes in a container and re-render the chart.
+ */
+function chartSelectAll(checkboxSelector, checked, renderFn) {
+    document.querySelectorAll(checkboxSelector).forEach(cb => {
+        cb.checked = checked;
+    });
+    renderFn();
+}
+
+/**
+ * Reset zoom on a Chart.js instance.
+ */
+function chartResetZoom(chartRef) {
+    if (chartRef) chartRef.resetZoom();
 }
 
 function _detectHwVersion(json) {
@@ -127,9 +330,9 @@ function _resolveFieldEntry(node, apiDocs) {
     return { fieldEntry, apiPath };
 }
 
-function _annotateConstants(tree, apiDocs, hwVersion) {
-    // Walk the jsonview tree and annotate leaf values with constant
-    // descriptions and unit abbreviations.
+function _annotateTree(tree, apiDocs, hwVersion) {
+    // Single-pass tree traversal that annotates leaf values with constant
+    // descriptions, unit abbreviations, and clickable info buttons.
     jsonview.traverse(tree, function(node) {
         if (!node.el || node.value === null || node.value === undefined) return;
         if (typeof node.value === 'object') return; // skip objects/arrays
@@ -139,63 +342,48 @@ function _annotateConstants(tree, apiDocs, hwVersion) {
 
         const { fieldEntry } = resolved;
         const valueEl = node.el.querySelector('.json-value');
-        if (!valueEl) return;
 
-        // --- constant annotation -----------------------------------------
-        const constants = fieldEntry.constants;
-        if (constants && Array.isArray(constants)) {
-            const nodeVal = node.value;
-            let matchDesc = null;
+        // --- constant & unit annotations on the value element ------------
+        if (valueEl) {
+            const constants = fieldEntry.constants;
+            if (constants && Array.isArray(constants)) {
+                const nodeVal = node.value;
+                let matchDesc = null;
 
-            for (const c of constants) {
-                if (c.version !== -1 && hwVersion !== -1 && (c.version & hwVersion) === 0) {
-                    continue;
+                for (const c of constants) {
+                    if (c.version !== -1 && hwVersion !== -1 && (c.version & hwVersion) === 0) {
+                        continue;
+                    }
+                    if (typeof nodeVal === 'boolean') {
+                        if (c.val === String(nodeVal)) { matchDesc = c.desc; break; }
+                    } else if (typeof nodeVal === 'number') {
+                        if (c.val === nodeVal) { matchDesc = c.desc; break; }
+                    } else if (typeof nodeVal === 'string') {
+                        if (c.val === nodeVal) { matchDesc = c.desc; break; }
+                    }
                 }
-                if (typeof nodeVal === 'boolean') {
-                    if (c.val === String(nodeVal)) { matchDesc = c.desc; break; }
-                } else if (typeof nodeVal === 'number') {
-                    if (c.val === nodeVal) { matchDesc = c.desc; break; }
-                } else if (typeof nodeVal === 'string') {
-                    if (c.val === nodeVal) { matchDesc = c.desc; break; }
+
+                if (matchDesc) {
+                    const hintEl = document.createElement('span');
+                    hintEl.className = 'enum-hint';
+                    hintEl.textContent = ` (${matchDesc})`;
+                    hintEl.title = matchDesc;
+                    valueEl.appendChild(hintEl);
                 }
             }
 
-            if (matchDesc) {
-                const hintEl = document.createElement('span');
-                hintEl.className = 'enum-hint';
-                hintEl.textContent = ` (${matchDesc})`;
-                hintEl.title = matchDesc;
-                valueEl.appendChild(hintEl);
+            if (fieldEntry.unit) {
+                const unitEl = document.createElement('span');
+                unitEl.className = 'unit-hint';
+                unitEl.textContent = ` ${fieldEntry.unit.abbr}`;
+                unitEl.title = fieldEntry.unit.name;
+                valueEl.appendChild(unitEl);
             }
         }
 
-        // --- unit annotation ---------------------------------------------
-        if (fieldEntry.unit) {
-            const unitEl = document.createElement('span');
-            unitEl.className = 'unit-hint';
-            unitEl.textContent = ` ${fieldEntry.unit.abbr}`;
-            unitEl.title = fieldEntry.unit.name;
-            valueEl.appendChild(unitEl);
-        }
-    });
-}
-
-function _addInfoButtons(tree, apiDocs, hwVersion) {
-    // Add clickable info buttons next to field keys that have API documentation.
-    // Uses Bootstrap 5 popovers to show description, unit, and constants.
-    jsonview.traverse(tree, function(node) {
-        if (!node.el || node.value === null || node.value === undefined) return;
-        if (typeof node.value === 'object') return;
-
-        const resolved = _resolveFieldEntry(node, apiDocs);
-        if (!resolved) return;
-
-        const { fieldEntry } = resolved;
-
-        // Only add info button if there is a description
+        // --- info button with popover ------------------------------------
         if (!fieldEntry.desc) return;
 
-        // Build popover HTML content
         let bodyHtml = `<div class="field-info-body">`;
         bodyHtml += `<p class="field-info-desc">${_escapeHtml(fieldEntry.desc)}</p>`;
 
@@ -204,7 +392,6 @@ function _addInfoButtons(tree, apiDocs, hwVersion) {
         }
 
         if (fieldEntry.constants && fieldEntry.constants.length > 0) {
-            // Filter by hw version for display
             const relevantConsts = fieldEntry.constants.filter(c =>
                 c.version === -1 || hwVersion === -1 || (c.version & hwVersion) !== 0
             );
@@ -219,16 +406,13 @@ function _addInfoButtons(tree, apiDocs, hwVersion) {
 
         bodyHtml += `</div>`;
 
-        // Create info button
         const btn = document.createElement('i');
         btn.className = 'bi bi-info-circle field-info-btn';
         btn.setAttribute('tabindex', '0');
         btn.setAttribute('role', 'button');
 
-        // Insert at the very start of the line
         node.el.insertBefore(btn, node.el.firstChild);
 
-        // Initialize Bootstrap popover
         new bootstrap.Popover(btn, {
             html: true,
             content: bodyHtml,
@@ -241,9 +425,7 @@ function _addInfoButtons(tree, apiDocs, hwVersion) {
 }
 
 function _escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 function make_jsonview(json, selector, options = {}) {
@@ -317,7 +499,7 @@ function make_jsonview(json, selector, options = {}) {
             const valueType = typeof node.value;
             node.el.classList.add(`json-type-${valueType}`);
 
-            // Add timestamp formatting — only for plausible real-world dates
+            // Add timestamp formatting, only for plausible real-world dates
             // (uptimes, boot_ids, bitmasks, etc. also fall into the Unix range
             //  but decode to implausible years like 2057 or 2106)
             if (typeof node.value === 'number' && node.value > 1000000000 && node.value < 9999999999) {
@@ -336,7 +518,7 @@ function make_jsonview(json, selector, options = {}) {
         // Handle modified configurations
         if(node.key && node.key.includes('modified')) {
             if(node.value && (node.value.modified == 1 || node.value.modified == 2 || node.value.modified == 3)) {
-                search = node.key.replace('_modified', '')
+                const search = node.key.replace('_modified', '')
                 jsonview.traverse(tree, function(searchNode) {
                     if(searchNode.key == search) {
                         if (node.value.modified == 1 || node.value.modified == 3) {
@@ -352,8 +534,7 @@ function make_jsonview(json, selector, options = {}) {
     // Annotate leaf values with API doc constant descriptions and units;
     // add info buttons with Bootstrap popovers for field documentation.
     if (apiConstants) {
-        _annotateConstants(tree, apiConstants, hwVersion);
-        _addInfoButtons(tree, apiConstants, hwVersion);
+        _annotateTree(tree, apiConstants, hwVersion);
     }
 
     // Add search functionality
@@ -451,28 +632,15 @@ function make_jsonview(json, selector, options = {}) {
 
             } else {
                 // Standard filtering for other types
+                const filterClass = {
+                    numbers: 'json-type-number',
+                    strings: 'json-type-string',
+                    booleans: 'json-type-boolean',
+                    objects: 'json-type-object',
+                }[filter];
                 jsonview.traverse(tree, function(node) {
                     if (node.el) {
-                        let show = true;
-
-                        switch(filter) {
-                            case 'numbers':
-                                show = node.el.classList.contains('json-type-number');
-                                break;
-                            case 'strings':
-                                show = node.el.classList.contains('json-type-string');
-                                break;
-                            case 'booleans':
-                                show = node.el.classList.contains('json-type-boolean');
-                                break;
-                            case 'objects':
-                                show = node.el.classList.contains('json-type-object');
-                                break;
-                            case 'all':
-                            default:
-                                show = true;
-                        }
-
+                        const show = !filterClass || node.el.classList.contains(filterClass);
                         node.el.style.display = show ? '' : 'none';
                     }
                 });
@@ -500,12 +668,8 @@ function expandAllJson(selector) {
     if (tree) {
         // Only expand visible nodes
         jsonview.traverse(tree, function(node) {
-            if (node.el && node.el.style.display !== 'none' && node.children.length > 0) {
-                jsonview.toggleNode(node); // This will expand if collapsed
-                // Make sure it's expanded, not collapsed
-                if (!node.isExpanded) {
-                    jsonview.toggleNode(node);
-                }
+            if (node.el && node.el.style.display !== 'none' && node.children.length > 0 && !node.isExpanded) {
+                jsonview.toggleNode(node);
             }
         });
     } else {
@@ -531,108 +695,132 @@ function collapseAllJson(selector) {
     }
 }
 
-function vislog_protocol(data) {
-    // Add csv_column property to datasets if not present
-    data.chart.datasets.forEach((dataset, index) => {
-        if (!dataset.csv_column) {
-            dataset.csv_column = dataset.label;
-        }
-    });
+// ---------------------------------------------------------------------------
+// Protocol Chart (unified single-page)
+// ---------------------------------------------------------------------------
+let protoChart = null;
+let protoData = null;
 
-    config = {
-        type: 'line',
-        data: data.chart,
-        options: {
-            animation: false,
-            maintainAspectRatio: false,
-            elements: {
-                point: {
-                    radius: 0
-                }
-            },
-            hover: {
-                mode: 'index',
-                intersect: false
-            },
-            plugins: {
-                title: {
-                    display: true,
-                    text: T.chart_title,
-                    color: '#f0f0f0'
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false
-                },
-                legend: {
-                    labels: {
-                        color: '#f0f0f0'
-                    }
-                },
-                zoom: {
-                    zoom: {
-                        drag: {
-                            enabled: true,
-                            backgroundColor: 'rgba(85, 85, 85, 0.3)',
-                            borderColor: 'rgba(85, 85, 85, 0.8)',
-                            borderWidth: 1,
-                            threshold: 20,
-                        },
-                        wheel: {
-                            enabled: false,
-                        },
-                        mode: 'xy',
-                    },
-                    pan: {
-                        enabled: true,
-                        mode: 'xy',
-                        modifierKey: 'ctrl',
-                        threshold: 5,
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    display: true,
-                    ticks: {
-                        color: '#f0f0f0'
-                    },
-                    grid: {
-                        color: '#3a3a3a'
-                    }
-                },
-                y: {
-                    display: true,
-                    type: 'logarithmic',
-                    ticks: {
-                        color: '#f0f0f0'
-                    },
-                    grid: {
-                        color: '#3a3a3a'
-                    }
-                }
+function initProtocolChart(data) {
+    protoData = data;
+    if (!protoData || !protoData.column_metadata) return;
+
+    // --- Backward compatibility: convert old ?configuration= or ?selected= to hash ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const legacyCfg = data.legacy_config || urlParams.get('configuration') || '';
+    const legacySel = data.legacy_selected || urlParams.get('selected') || '';
+    if (legacyCfg || legacySel) {
+        const cols = (legacyCfg || legacySel).split(',').filter(Boolean);
+        if (cols.length > 0) {
+            // Apply these as initial selection and put in hash
+            const checkboxes = document.querySelectorAll('#proto-column-checkboxes input[type="checkbox"]');
+            const colSet = new Set(cols);
+            checkboxes.forEach(cb => {
+                cb.checked = colSet.has(cb.dataset.column);
+            });
+            // If came from ?configuration=, also enable log axis (old default was log)
+            if (legacyCfg) {
+                const logCb = document.getElementById('proto-log-axis');
+                if (logCb) logCb.checked = true;
+            }
+            // Strip query params, put state in hash instead
+            const cleanUrl = window.location.pathname;
+            history.replaceState(null, '', cleanUrl);
+            _protoUpdateHash();
+        }
+    } else {
+        // Restore selection from URL hash if present
+        const hashState = _protoParseHash();
+        if (hashState.columns !== null) {
+            const colSet = new Set(hashState.columns);
+            const checkboxes = document.querySelectorAll('#proto-column-checkboxes input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.checked = colSet.has(cb.dataset.column);
+            });
+            if (hashState.log) {
+                const logCb = document.getElementById('proto-log-axis');
+                if (logCb) logCb.checked = true;
             }
         }
-    };
-    chart = new Chart(document.getElementById('warp_chart'), config);
+    }
 
-    // Detect hardware version from either before or after protocol JSON
+    // Initialize JSON viewers and log textareas
     const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
     const hwVersion = _detectHwVersion(protocolJson);
     const jsonviewOpts = data.api_constants
         ? { apiConstants: data.api_constants, hwVersion: hwVersion }
         : {};
-    make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts)
-    make_jsonview(data.after_protocol_json,  '#after-protocol-json', jsonviewOpts)
+    make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
+    make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
 
     document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
     document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
+
+    // Render chart with initial selection
+    protoRenderChart();
 }
 
-function reset_zoom() {
-    if (chart) {
-        chart.resetZoom();
-    }
+function _protoParseHash() {
+    return _parseChartHash('cols', 'log');
+}
+
+function _protoUpdateHash() {
+    _updateChartHash('#proto-column-checkboxes input[type="checkbox"]', 'proto-log-axis', 'cols', 'log');
+}
+
+function protoRenderChart() {
+    if (!protoData) return;
+
+    // Gather selected columns
+    const selected = [];
+    document.querySelectorAll('#proto-column-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+        selected.push(cb.dataset.column);
+    });
+
+    // Build column label lookup from metadata
+    const labelLookup = {};
+    protoData.column_metadata.forEach(col => {
+        labelLookup[col.name] = col.label;
+    });
+
+    // Log / linear Y-axis
+    const logCheckbox = document.getElementById('proto-log-axis');
+    const useLog = logCheckbox && logCheckbox.checked;
+
+    // Build datasets
+    const datasets = [];
+    let colorIdx = 0;
+
+    selected.forEach(colName => {
+        const rawData = protoData.all_column_data[colName];
+        if (!rawData) return;
+
+        // For log view: replace 0 with 0.01 (Chart.js can't show 0 on log scale)
+        // See https://github.com/chartjs/Chart.js/issues/9629
+        const chartData = useLog ? rawData.map(v => (v === 0 ? 0.01 : v)) : rawData;
+
+        datasets.push(_chartDataset(labelLookup[colName] || colName, chartData, colorIdx++));
+    });
+
+    protoChart = _createTimeSeriesChart({
+        canvasId: 'proto-chart',
+        prevChart: protoChart,
+        labels: protoData.labels,
+        datasets: datasets,
+        titleText: T.chart_title || 'Charge Log',
+        useLog: useLog,
+    });
+
+    // Persist selection in URL hash for sharing
+    _protoUpdateHash();
+}
+
+function protoSelectAll(checked) {
+    chartSelectAll('#proto-column-checkboxes input[type="checkbox"]', checked, protoRenderChart);
+}
+
+function protoResetZoom() {
+    chartResetZoom(protoChart);
 }
 
 function vislog_report(data) {
@@ -660,5 +848,184 @@ function vislog_report(data) {
         }
     }
 
+    // Initialize charge manager chart if parsed data is available
+    if (data.cm_parsed) {
+        initCmChart(data.cm_parsed);
+    }
+
     // Coredump is now rendered server-side, no JS needed
+}
+
+// ---------------------------------------------------------------------------
+// Charge Manager Chart
+// ---------------------------------------------------------------------------
+let cmChart = null;
+let cmData = null;
+
+function initCmChart(data) {
+    cmData = data;
+    if (!cmData || !cmData.columns) return;
+
+    const container = document.getElementById('cm-column-groups');
+    if (!container) return;
+
+    // Group columns
+    const groups = {};
+    cmData.columns.forEach(col => {
+        if (!groups[col.group]) groups[col.group] = [];
+        groups[col.group].push(col);
+    });
+
+    // Default selected: PM group + first few key columns
+    const defaultKeys = new Set(['pm_mtr', 'pm_avl', 'pv_raw', 's0_raw_total', 's9_raw_total', 'alloc_current']);
+
+    // Restore selection from URL hash if present
+    const hashState = _cmParseHash();
+    const restoredKeys = hashState.columns;
+    const restoredLog = hashState.log;
+    const useRestored = restoredKeys !== null;
+    const selectedKeys = useRestored ? new Set(restoredKeys) : defaultKeys;
+
+    container.innerHTML = '';
+    for (const [groupName, cols] of Object.entries(groups)) {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'chart-column-group';
+        const heading = document.createElement('h6');
+        heading.textContent = groupName;
+        groupDiv.appendChild(heading);
+
+        cols.forEach(col => {
+            const label = document.createElement('label');
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.dataset.column = col.key;
+            cb.checked = selectedKeys.has(col.key);
+            cb.addEventListener('change', renderCmChart);
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(' ' + col.label));
+            groupDiv.appendChild(label);
+        });
+
+        container.appendChild(groupDiv);
+    }
+
+    // Restore log axis state
+    if (restoredLog) {
+        const logCb = document.getElementById('cm-log-axis');
+        if (logCb) logCb.checked = true;
+    }
+
+    // Auto-render with defaults/restored state
+    renderCmChart();
+}
+
+function _cmParseHash() {
+    return _parseChartHash('cm', 'cmlog');
+}
+
+function _cmUpdateHash() {
+    _updateChartHash('#cm-column-groups input[type="checkbox"]', 'cm-log-axis', 'cm', 'cmlog');
+}
+
+function cmSelectAll(checked) {
+    chartSelectAll('#cm-column-groups input[type="checkbox"]', checked, renderCmChart);
+}
+
+function cmResetZoom() {
+    chartResetZoom(cmChart);
+}
+
+function renderCmChart() {
+    if (!cmData) return;
+
+    // Gather selected columns
+    const selected = [];
+    document.querySelectorAll('#cm-column-groups input[type="checkbox"]:checked').forEach(cb => {
+        selected.push(cb.dataset.column);
+    });
+
+    if (selected.length === 0) return;
+
+    // Build timestamp lookup: sorted array of [row_idx, timestamp_string]
+    // for nearest-match lookups on the x-axis
+    const tsEntries = cmData.timestamps || [];
+    const tsMap = {};
+    tsEntries.forEach(([idx, ts]) => { tsMap[idx] = ts; });
+
+    // Find the nearest timestamp for a given row index
+    function nearestTimestamp(rowIdx) {
+        if (tsEntries.length === 0) return null;
+        // Binary search for closest entry
+        let lo = 0, hi = tsEntries.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (tsEntries[mid][0] < rowIdx) lo = mid + 1;
+            else hi = mid;
+        }
+        // lo is the first entry >= rowIdx; compare with lo-1
+        if (lo > 0 && (lo >= tsEntries.length ||
+            Math.abs(tsEntries[lo - 1][0] - rowIdx) <= Math.abs(tsEntries[lo][0] - rowIdx))) {
+            lo = lo - 1;
+        }
+        return tsEntries[lo][1];
+    }
+
+    // Build x-axis labels (row indices)
+    const labels = [];
+    for (let i = 0; i < cmData.row_count; i++) {
+        labels.push(i);
+    }
+
+    // Build datasets
+    const datasets = [];
+    let colorIdx = 0;
+
+    const colLookup = {};
+    cmData.columns.forEach(c => { colLookup[c.key] = c; });
+
+    selected.forEach(key => {
+        const colMeta = colLookup[key];
+        if (!colMeta) return;
+
+        let data;
+        if (cmData.table_data && cmData.table_data[key]) {
+            // Dense table data, use directly as array
+            data = cmData.table_data[key];
+        } else if (cmData.summary_data && cmData.summary_data[key]) {
+            // Sparse summary data, convert to {x, y} points
+            data = cmData.summary_data[key].map(([idx, val]) => ({ x: idx, y: val }));
+        } else {
+            return;
+        }
+
+        datasets.push(_chartDataset(colMeta.label, data, colorIdx++));
+    });
+
+    // Log / linear Y-axis
+    const logCheckbox = document.getElementById('cm-log-axis');
+    const useLog = logCheckbox && logCheckbox.checked;
+
+    cmChart = _createTimeSeriesChart({
+        canvasId: 'cm-chart',
+        prevChart: cmChart,
+        labels: labels,
+        datasets: datasets,
+        titleText: T.cm_chart_title || 'Charge Manager',
+        useLog: useLog,
+        xMaxTicksLimit: 10,
+        xTickCallback: function(value) {
+            const ts = nearestTimestamp(value);
+            if (ts) return ts.split(' ')[1] || ts;
+            return '';
+        },
+        tooltipTitleCallback: function(items) {
+            if (!items.length) return '';
+            const idx = items[0].dataIndex;
+            const ts = tsMap[idx] || nearestTimestamp(idx);
+            return ts ? `Row ${idx} - ${ts}` : `Row ${idx}`;
+        },
+    });
+
+    // Persist selection in URL hash for sharing
+    _cmUpdateHash();
 }

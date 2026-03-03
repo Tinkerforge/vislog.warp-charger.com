@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}vislog{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
+    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% block body %}{% endblock %}
+
+    <footer>{{ t.footer_ecosystem }} &middot; <a href="https://www.warp-charger.com">warp-charger.com</a> &middot; <a href="https://github.com/Tinkerforge/vislog.warp-charger.com">{{ t.footer_source }}</a>
+    <div class="footer-legal"><a href="https://www.tinkerforge.com/{{ lang }}/home/legal_info/">{{ t.footer_legal_info }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/privacy_notice/">{{ t.footer_privacy }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/terms_and_conditions/">{{ t.footer_terms }}</a></div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+    {% block page_script %}{% endblock %}
+</body>
+</html>

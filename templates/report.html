@@ -1,17 +1,18 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ t.page_title_report }}</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
-    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
+{% extends "base.html" %}
+{% from "macros.html" import chart_column_card %}
+
+{% block title %}{{ t.page_title_report }}{% endblock %}
+
+{% block extra_head %}
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
-</head>
-<body>
+    {% if data.cm_parsed %}
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <script src="{{ url_for('static', filename='hammer.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='chartjs-plugin-zoom.min.js') }}"></script>
+    {% endif %}
+{% endblock %}
+
+{% block body %}
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
@@ -67,6 +68,16 @@
         {% endif %}
         {% for module_name, module_content in data.trace_modules.items() %}
         <div class="tab-pane fade p-3" id="trace-{{ module_name }}" role="tabpanel">
+            {% if module_name == 'charge_manager' and data.cm_parsed %}
+            <div class="cm-chart-container mb-3">
+                {% call() chart_column_card(t, 'cm', 'renderCmChart', 'cmSelectAll', 'cmResetZoom') %}
+                    <div id="cm-column-groups" class="chart-columns-grid"></div>
+                {% endcall %}
+                <div class="cm-chart-wrap">
+                    <canvas id="cm-chart"></canvas>
+                </div>
+            </div>
+            {% endif %}
             <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>
         {% endfor %}
@@ -180,20 +191,21 @@
             {% endif %}
         </div>
     </div>
+{% endblock %}
 
-    <footer>{{ t.footer_ecosystem }} &middot; <a href="https://www.warp-charger.com">warp-charger.com</a> &middot; <a href="https://github.com/Tinkerforge/vislog.warp-charger.com">{{ t.footer_source }}</a>
-    <div class="footer-legal"><a href="https://www.tinkerforge.com/{{ lang }}/home/legal_info/">{{ t.footer_legal_info }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/privacy_notice/">{{ t.footer_privacy }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/terms_and_conditions/">{{ t.footer_terms }}</a></div>
-    </footer>
-
-    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+{% block page_script %}
     <script>
         const T = {{ t | tojson }};
         let data = {{ data | tojson}};
+
+        // Called by toggleTheme() in vislog.js via the onThemeChanged hook
+        function onThemeChanged(theme) {
+            if (typeof renderCmChart === 'function' && cmData) renderCmChart();
+        }
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             vislog_report(data);
         });
     </script>
-</body>
-</html>
+{% endblock %}

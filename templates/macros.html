@@ -1,0 +1,24 @@
+{% macro chart_column_card(t, prefix, render_fn, select_fn, reset_fn, extra_class='') %}
+<div class="card mb-2{{ ' ' + extra_class if extra_class }}">
+    <div class="card-header chart-collapse-header d-flex flex-wrap align-items-center gap-2" role="button" aria-expanded="true" aria-controls="{{ prefix }}-columns-body">
+        <span class="d-flex align-items-center gap-1">
+            <i class="bi bi-chevron-down collapse-chevron"></i>
+            <i class="bi bi-bar-chart-line"></i> {{ t.select_columns_heading }}
+        </span>
+        <div class="d-flex flex-wrap align-items-center gap-2 ms-auto chart-header-controls">
+            <div class="form-check form-switch form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" id="{{ prefix }}-log-axis" onchange="{{ render_fn }}()">
+                <label class="form-check-label small" for="{{ prefix }}-log-axis">{{ t.log_axis }}</label>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="{{ select_fn }}(true)">{{ t.select_all }}</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="{{ select_fn }}(false)">{{ t.deselect_all }}</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="{{ reset_fn }}()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
+        </div>
+    </div>
+    <div class="collapse show" id="{{ prefix }}-columns-body">
+        <div class="card-body">
+            {{ caller() }}
+        </div>
+    </div>
+</div>
+{% endmacro %}

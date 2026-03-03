@@ -11,30 +11,16 @@ TRANSLATIONS = {
         'upload_heading': 'WARP Charger Ladeprotokoll oder Debug-Report hochladen',
         'upload_hint': 'Klicken oder Datei hierher ziehen',
 
-        # --- protocol config page ---
-        'page_title_protocol_config': 'WARP Charger Protokoll-Visualisierer - Spalten ausw\u00e4hlen',
-        'select_columns_heading': 'Spalten f\u00fcr Visualisierung ausw\u00e4hlen',
-        'search_columns_placeholder': 'Spalten durchsuchen...',
+        # --- protocol column selector ---
+        'select_columns_heading': 'Spalten ausw\u00e4hlen',
         'select_all': 'Alle ausw\u00e4hlen',
         'deselect_all': 'Alle abw\u00e4hlen',
-        'default_selection': 'Standard-Auswahl',
-        'show_chart': 'Chart anzeigen',
-        'copy_link': 'Link kopieren',
-        'copied': 'Kopiert!',
-        'shareable_link': 'Teilbarer Link:',
-        'predefined_badge': 'Standard',
-        'select_at_least_one': 'Bitte w\u00e4hlen Sie mindestens eine Spalte aus.',
-        'columns_shown_filtered': '${visible} von ${total} Spalten angezeigt',
-        'columns_available': '${total} Spalten verf\u00fcgbar',
 
         # --- protocol chart page ---
         'page_title_protocol': 'WARP Charger Protokoll-Visualisierer',
-        'columns_shown': 'Angezeigte Spalten',
         'log_axis': 'Y-Achse logarithmisch',
         'reset_zoom': 'Zoom zur\u00fccksetzen',
         'reset_zoom_title': 'Zur urspr\u00fcnglichen Ansicht zur\u00fcckkehren',
-        'change_columns': 'Spalten \u00e4ndern',
-        'zoom_hint': 'Ziehen zum Zoomen | Strg + Ziehen zum Verschieben',
         'chart_title': 'Ladeprotokoll',
 
         # --- protocol tabs ---
@@ -73,7 +59,6 @@ TRANSLATIONS = {
         # --- common ---
         'toggle_theme': 'Dunkel-/Hellmodus umschalten',
         'switch_language': 'Switch to English',
-        'lang_code': 'de',
 
         # --- JSON viewer (used in JS) ---
         'search_placeholder': 'Konfigurationen durchsuchen... (Enter: n\u00e4chster, Shift+Enter: vorheriger)',
@@ -126,6 +111,16 @@ TRANSLATIONS = {
         'footer_legal_info': 'Impressum',
         'footer_privacy': 'Datenschutz',
         'footer_terms': 'AGB',
+
+        # --- charge manager chart ---
+        'cm_chart_title': 'Charge Manager Verlauf',
+
+        # --- column groups ---
+        'group_predefined': 'Standard',
+        'group_voltages': 'Spannungen',
+        'group_gpio': 'GPIO',
+        'group_slots': 'Slots',
+        'group_other': 'Weitere',
     },
     'en': {
         # --- index page ---
@@ -133,30 +128,16 @@ TRANSLATIONS = {
         'upload_heading': 'Upload WARP Charger charge log or debug report',
         'upload_hint': 'Click or drag file here',
 
-        # --- protocol config page ---
-        'page_title_protocol_config': 'WARP Charger Protocol Visualizer - Select Columns',
-        'select_columns_heading': 'Select columns for visualization',
-        'search_columns_placeholder': 'Search columns...',
+        # --- protocol column selector ---
+        'select_columns_heading': 'Select columns',
         'select_all': 'Select all',
         'deselect_all': 'Deselect all',
-        'default_selection': 'Default selection',
-        'show_chart': 'Show chart',
-        'copy_link': 'Copy link',
-        'copied': 'Copied!',
-        'shareable_link': 'Shareable link:',
-        'predefined_badge': 'Default',
-        'select_at_least_one': 'Please select at least one column.',
-        'columns_shown_filtered': '${visible} of ${total} columns shown',
-        'columns_available': '${total} columns available',
 
         # --- protocol chart page ---
         'page_title_protocol': 'WARP Charger Protocol Visualizer',
-        'columns_shown': 'Columns shown',
         'log_axis': 'Y-axis logarithmic',
         'reset_zoom': 'Reset zoom',
         'reset_zoom_title': 'Return to original view',
-        'change_columns': 'Change columns',
-        'zoom_hint': 'Drag to zoom | Ctrl + Drag to pan',
         'chart_title': 'Charge Log',
 
         # --- protocol tabs ---
@@ -195,7 +176,6 @@ TRANSLATIONS = {
         # --- common ---
         'toggle_theme': 'Toggle dark/light mode',
         'switch_language': 'Auf Deutsch wechseln',
-        'lang_code': 'en',
 
         # --- JSON viewer (used in JS) ---
         'search_placeholder': 'Search configurations... (Enter: next, Shift+Enter: previous)',
@@ -248,6 +228,16 @@ TRANSLATIONS = {
         'footer_legal_info': 'Legal Info',
         'footer_privacy': 'Privacy Notice',
         'footer_terms': 'Terms & Conditions',
+
+        # --- charge manager chart ---
+        'cm_chart_title': 'Charge Manager History',
+
+        # --- column groups ---
+        'group_predefined': 'Default',
+        'group_voltages': 'Voltages',
+        'group_gpio': 'GPIO',
+        'group_slots': 'Slots',
+        'group_other': 'Other',
     },
 }
 

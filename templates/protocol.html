@@ -1,22 +1,17 @@
-<!DOCTYPE html>
-<html lang="{{ lang }}" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ t.page_title_protocol }}</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-icons.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='vislog.css') }}">
-    <script src="{{ url_for('static', filename='vislog.js') }}"></script>
+{% extends "base.html" %}
+{% from "macros.html" import chart_column_card %}
+
+{% block title %}{{ t.page_title_protocol }}{% endblock %}
+
+{% block extra_head %}
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <script src="{{ url_for('static', filename='hammer.min.js') }}"></script>
     <script src="{{ url_for('static', filename='chartjs-plugin-zoom.min.js') }}"></script>
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
-</head>
-<body>
+{% endblock %}
+
+{% block body %}
     {% if data.dropped_lines_count %}
-    <!-- Warning banner for truncated CSV data -->
     <div class="alert alert-warning alert-dismissible fade show m-2" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
         <strong>{{ t.warning_label }}</strong> {{ t.dropped_lines_warning.replace('${count}', data.dropped_lines_count | string) }}
@@ -24,77 +19,75 @@
     </div>
     {% endif %}
 
-    <!-- Controls Bar -->
-    <div class="controls-bar bg-body-secondary border-bottom p-3">
-        <div class="d-flex flex-wrap align-items-start gap-3">
-            <div class="card flex-grow-1">
-                <div class="card-body p-3">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-                        <h6 class="card-title mb-0">{{ t.columns_shown }} ({{ data.selected_column_labels|length }})</h6>
-                        <div class="d-flex flex-wrap align-items-center gap-2">
-                            <div class="form-check form-check-inline mb-0">
-                                <input class="form-check-input" type="checkbox" id="log-axis" checked onchange="log_axis_clicked();">
-                                <label class="form-check-label small" for="log-axis">{{ t.log_axis }}</label>
-                            </div>
-                            <button onclick="reset_zoom()" class="btn btn-sm btn-outline-secondary" title="{{ t.reset_zoom_title }}">
-                                <i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}
-                            </button>
-                            <a href="javascript:void(0)" onclick="go_back_to_config()" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-gear"></i> {{ t.change_columns }}
-                            </a>
-                            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}{% if request.query_string %}?{{ request.query_string.decode() }}{% endif %}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
-                                {{ 'EN' if lang == 'de' else 'DE' }}
-                            </a>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
-                                <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
-                                <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="column-tags">
-                        {% for label in data.selected_column_labels %}
-                        <span class="column-tag badge bg-secondary">{{ label }}</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Chart -->
-    <div class="chart-container p-2">
-        <canvas id="warp_chart"></canvas>
-    </div>
-    <div class="zoom-hint text-center text-secondary bg-body-tertiary border-top py-2">
-        <i class="bi bi-info-circle"></i> {{ t.zoom_hint }}
-    </div>
-
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
-                {{ t.tab_config_before }}
+            <button class="nav-link active" id="chart-tab" data-bs-toggle="tab" data-bs-target="#proto-chart-pane" type="button" role="tab">
+                <i class="bi bi-graph-up"></i> {{ t.chart_title }}
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
+                <i class="bi bi-gear"></i> {{ t.tab_config_before }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
-                {{ t.tab_config_after }}
+                <i class="bi bi-gear"></i> {{ t.tab_config_after }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
-                {{ t.tab_log_before }}
+                <i class="bi bi-journal-text"></i> {{ t.tab_log_before }}
             </button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
-                {{ t.tab_log_after }}
+                <i class="bi bi-journal-text"></i> {{ t.tab_log_after }}
+            </button>
+        </li>
+        <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
+            <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
+                {{ 'EN' if lang == 'de' else 'DE' }}
+            </a>
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
+                <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
+                <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
             </button>
         </li>
     </ul>
 
     <div class="tab-content border border-top-0 rounded-bottom">
-        <div class="tab-pane fade show active p-3" id="before-protocol-json" role="tabpanel">
+        <!-- Chart Tab -->
+        <div class="tab-pane fade show active" id="proto-chart-pane" role="tabpanel">
+            <!-- Column Selector -->
+            {% call() chart_column_card(t, 'proto', 'protoRenderChart', 'protoSelectAll', 'protoResetZoom', 'm-3') %}
+                <div class="chart-columns-grid" id="proto-column-checkboxes">
+                    {% for group_order, columns in data.column_metadata | sort(attribute='group_order') | groupby('group_order') %}
+                    <div class="chart-column-group">
+                        <h6>{{ columns[0].group }}</h6>
+                        {% for column in columns %}
+                        <label title="{{ column.name }}">
+                            <input type="checkbox"
+                                   data-column="{{ column.name }}"
+                                   {% if not column.hidden_by_default %}checked{% endif %}
+                                   onchange="protoRenderChart()">
+                            {{ column.label }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            {% endcall %}
+
+            <!-- Chart -->
+            <div class="chart-container p-2">
+                <canvas id="proto-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Config / Log Tabs -->
+        <div class="tab-pane fade p-3" id="before-protocol-json" role="tabpanel">
         </div>
         <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
         </div>
@@ -105,53 +98,20 @@
             <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
         </div>
     </div>
+{% endblock %}
 
-    <footer>{{ t.footer_ecosystem }} &middot; <a href="https://www.warp-charger.com">warp-charger.com</a> &middot; <a href="https://github.com/Tinkerforge/vislog.warp-charger.com">{{ t.footer_source }}</a>
-    <div class="footer-legal"><a href="https://www.tinkerforge.com/{{ lang }}/home/legal_info/">{{ t.footer_legal_info }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/privacy_notice/">{{ t.footer_privacy }}</a> &middot; <a href="https://www.tinkerforge.com/{{ lang }}/home/terms_and_conditions/">{{ t.footer_terms }}</a></div>
-    </footer>
-
-    <script src="{{ url_for('static', filename='bootstrap.bundle.min.js') }}"></script>
+{% block page_script %}
     <script>
         const T = {{ t | tojson }};
-        let data = {{ data | tojson}};
-
-        function go_back_to_config() {
-            const pathParts = window.location.pathname.split('/');
-            // pathParts: ['', lang, uuid, ...]
-            const lang = pathParts[1];
-            const uuid = pathParts[2];
-            // Pass the current configuration as 'selected' param (not 'configuration')
-            // so the config page can restore the selection without triggering chart view
-            const currentConfig = new URLSearchParams(window.location.search).get('configuration');
-            if (currentConfig) {
-                window.location.href = '/' + lang + '/' + uuid + '?selected=' + encodeURIComponent(currentConfig);
-            } else {
-                window.location.href = '/' + lang + '/' + uuid;
-            }
-        }
+        let data = {{ data | tojson }};
 
         // Called by toggleTheme() in vislog.js via the onThemeChanged hook
         function onThemeChanged(theme) {
-            if (typeof chart !== 'undefined' && chart) {
-                const textColor = theme === 'dark' ? '#f0f0f0' : '#212529';
-                const gridColor = theme === 'dark' ? '#3a3a3a' : '#dee2e6';
-
-                chart.options.scales.x.ticks.color = textColor;
-                chart.options.scales.x.grid.color = gridColor;
-                chart.options.scales.y.ticks.color = textColor;
-                chart.options.scales.y.grid.color = gridColor;
-                chart.options.plugins.title.color = textColor;
-                chart.options.plugins.legend.labels.color = textColor;
-                chart.update();
-            }
+            protoRenderChart();
         }
 
-        // Initialize after DOM loaded
         document.addEventListener('DOMContentLoaded', function() {
-            vislog_protocol(data);
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            setTimeout(() => onThemeChanged(savedTheme), 100);
+            initProtocolChart(data);
         });
     </script>
-</body>
-</html>
+{% endblock %}

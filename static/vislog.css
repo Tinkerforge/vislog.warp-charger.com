@@ -112,26 +112,8 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   Controls Bar
+   Chart Columns
    -------------------------------------------------------------------------- */
-.controls-bar {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-/* --------------------------------------------------------------------------
-   Column Tags
-   -------------------------------------------------------------------------- */
-.column-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.column-tag {
-  font-size: 0.75rem;
-}
 
 /* --------------------------------------------------------------------------
    Chart Container
@@ -140,10 +122,6 @@ body {
   height: 75vh;
   width: 100%;
   position: relative;
-}
-
-.zoom-hint {
-  font-size: 0.75rem;
 }
 
 /* --------------------------------------------------------------------------
@@ -173,54 +151,66 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   Config Page - Column Selection
+   Chart Column Selection (shared by protocol + CM charts)
    -------------------------------------------------------------------------- */
-.columns-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.5rem;
+.chart-columns-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   max-height: 400px;
   overflow-y: auto;
 }
 
-.column-item {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem;
-  background-color: var(--bs-tertiary-bg);
-  border-radius: var(--bs-border-radius);
-  border: 1px solid var(--bs-border-color);
-  transition: background-color 0.15s;
+.chart-column-group {
+  min-width: 150px;
 }
 
-.column-item:hover {
-  background-color: var(--bs-secondary-bg);
+.chart-column-group h6 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--bs-secondary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
-.column-item input[type="checkbox"] {
-  margin-right: 0.5rem;
-  flex-shrink: 0;
-}
-
-.column-item label {
+.chart-column-group label {
+  display: block;
+  font-size: 0.8rem;
   cursor: pointer;
-  font-size: 0.875rem;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  word-break: break-word;
-  margin: 0;
+  padding: 0.05rem 0;
+  white-space: nowrap;
 }
 
-.column-label {
-  flex: 1;
-  word-break: break-word;
+.chart-column-group label:hover {
+  color: var(--bs-primary);
 }
 
-.predefined-badge {
-  flex-shrink: 0;
+.chart-column-group input[type="checkbox"] {
+  margin-right: 0.35rem;
+}
+
+/* Collapsible chart header */
+.chart-collapse-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.chart-collapse-header:hover {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.chart-collapse-header .chart-header-controls {
+  cursor: default;
+}
+
+.collapse-chevron {
+  transition: transform 0.2s ease;
+}
+
+.chart-collapse-header[aria-expanded="false"] .collapse-chevron {
+  transform: rotate(-90deg);
 }
 
 /* --------------------------------------------------------------------------
@@ -322,16 +312,10 @@ body {
 }
 
 .json-type-number .json-value {
-  color: var(--json-number) !important;
   font-weight: 500;
 }
 
-.json-type-string .json-value {
-  color: var(--json-string) !important;
-}
-
 .json-type-boolean .json-value {
-  color: var(--json-boolean) !important;
   font-weight: 500;
 }
 
@@ -347,26 +331,17 @@ body {
   border-radius: 2px;
 }
 
-/* Timestamp hints */
-.timestamp-hint {
-  color: var(--bs-secondary-color) !important;
-  font-size: 0.75rem;
-  font-style: italic;
-  margin-left: 0.5rem;
-}
-
-/* API constant enum hints */
-.enum-hint {
-  color: var(--bs-secondary-color) !important;
-  font-size: 0.75rem;
-  font-style: italic;
-}
-
-/* Unit abbreviation hints (shown inline after the value) */
+/* Value hints (shared base style) */
+.timestamp-hint,
+.enum-hint,
 .unit-hint {
   color: var(--bs-secondary-color) !important;
   font-size: 0.75rem;
   font-style: italic;
+}
+
+.timestamp-hint {
+  margin-left: 0.5rem;
 }
 
 /* Info button at the start of JSON lines */
@@ -506,9 +481,8 @@ body {
    Responsive Adjustments
    -------------------------------------------------------------------------- */
 @media (max-width: 768px) {
-  .columns-grid {
-    grid-template-columns: 1fr;
-    max-height: 300px;
+  .chart-columns-grid {
+    gap: 0.5rem;
   }
 
   .chart-container {
@@ -568,7 +542,6 @@ footer a:hover {
 
 @media print {
   .theme-toggle,
-  .controls-bar,
   .json-controls,
   footer {
     display: none !important;
@@ -576,5 +549,24 @@ footer a:hover {
 
   .chart-container {
     height: auto;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Charge Manager Chart
+   -------------------------------------------------------------------------- */
+.cm-chart-container {
+  margin-bottom: 1rem;
+}
+
+.cm-chart-wrap {
+  position: relative;
+  height: 75vh;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .cm-chart-wrap {
+    height: 50vh;
   }
 }
