@@ -311,6 +311,11 @@ body {
   color: var(--json-null) !important;
 }
 
+.json-container .json-censored {
+  color: var(--json-null) !important;
+  font-style: italic;
+}
+
 .json-type-number .json-value {
   font-weight: 500;
 }

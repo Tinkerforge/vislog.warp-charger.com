@@ -127,6 +127,10 @@ def _build_api_constants(locale='de'):
             if constants:
                 entry['constants'] = constants
 
+        # --- censored flag ----------------------------------------------
+        if getattr(elem, 'censored', False) or getattr(elem, 'censored_in_debug_report', False):
+            entry['censored'] = True
+
         # Store the entry if it carries any useful information
         if entry:
             out[field_name] = entry

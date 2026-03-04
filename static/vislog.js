@@ -342,7 +342,20 @@ function _annotateTree(tree, apiDocs, hwVersion) {
     // Single-pass tree traversal that annotates leaf values with constant
     // descriptions, unit abbreviations, and clickable info buttons.
     jsonview.traverse(tree, function(node) {
-        if (!node.el || node.value === null || node.value === undefined) return;
+        if (!node.el) return;
+
+        // Handle censored null values: show explanatory text instead of "null"
+        if (node.value === null || node.value === undefined) {
+            const resolved = _resolveFieldEntry(node, apiDocs);
+            if (resolved && resolved.fieldEntry && resolved.fieldEntry.censored) {
+                const valueEl = node.el.querySelector('.json-value');
+                if (valueEl) {
+                    valueEl.textContent = `*${T.censored_value || 'censored in debug report'}*`;
+                    valueEl.classList.add('json-censored');
+                }
+            }
+            return;
+        }
         if (typeof node.value === 'object') return; // skip objects/arrays
 
         const resolved = _resolveFieldEntry(node, apiDocs);
