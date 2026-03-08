@@ -109,6 +109,52 @@ function _updateChartHash(checkboxSelector, logCheckboxId, colsKey, logKey) {
 }
 
 // ---------------------------------------------------------------------------
+// Zoom URL hash helpers, persist / restore chart zoom level in the URL so
+// that a shared link reproduces the same view.
+// ---------------------------------------------------------------------------
+function _saveZoomToHash(chart, xKey, yKey) {
+    if (!chart) return;
+    const xScale = chart.scales.x;
+    const yScale = chart.scales.y;
+    if (xScale && xScale.min != null && xScale.max != null) {
+        _hashSet(xKey, xScale.min + ',' + xScale.max);
+    }
+    if (yScale && yScale.min != null && yScale.max != null) {
+        _hashSet(yKey, yScale.min + ',' + yScale.max);
+    }
+}
+
+function _applyZoomFromHash(chart, xKey, yKey) {
+    if (!chart) return;
+    const params = _hashParams();
+    const xZoom = params.get(xKey);
+    const yZoom = params.get(yKey);
+    let applied = false;
+    if (xZoom) {
+        const parts = xZoom.split(',').map(Number);
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            chart.options.scales.x.min = parts[0];
+            chart.options.scales.x.max = parts[1];
+            applied = true;
+        }
+    }
+    if (yZoom) {
+        const parts = yZoom.split(',').map(Number);
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            chart.options.scales.y.min = parts[0];
+            chart.options.scales.y.max = parts[1];
+            applied = true;
+        }
+    }
+    if (applied) chart.update('none');
+}
+
+function _clearZoomHash(xKey, yKey) {
+    _hashSet(xKey, null);
+    _hashSet(yKey, null);
+}
+
+// ---------------------------------------------------------------------------
 // Tab persistence – save active tab in URL hash, restore on page load.
 // Works on both protocol and report pages.
 // ---------------------------------------------------------------------------
@@ -163,6 +209,8 @@ const CHART_COLORS = [
  * @param {Function}      [cfg.xTickCallback]    - custom x-axis tick callback
  * @param {Function}      [cfg.tooltipTitleCallback] - custom tooltip title callback
  * @param {number}        [cfg.xMaxTicksLimit]   - max x-axis tick count
+ * @param {string}        [cfg.zoomXKey]         - URL hash key for x-axis zoom (enables zoom persistence)
+ * @param {string}        [cfg.zoomYKey]         - URL hash key for y-axis zoom
  * @returns {Chart}       the new Chart instance
  */
 function _createTimeSeriesChart(cfg) {
@@ -195,7 +243,7 @@ function _createTimeSeriesChart(cfg) {
         tooltipCallbacks.title = cfg.tooltipTitleCallback;
     }
 
-    return new Chart(canvas, {
+    const chart = new Chart(canvas, {
         type: 'line',
         data: { labels: cfg.labels, datasets: cfg.datasets },
         options: {
@@ -229,12 +277,18 @@ function _createTimeSeriesChart(cfg) {
                         },
                         wheel: { enabled: false },
                         mode: 'xy',
+                        onZoomComplete: function({chart}) {
+                            if (cfg.zoomXKey) _saveZoomToHash(chart, cfg.zoomXKey, cfg.zoomYKey);
+                        },
                     },
                     pan: {
                         enabled: true,
                         mode: 'xy',
                         modifierKey: 'ctrl',
                         threshold: 5,
+                        onPanComplete: function({chart}) {
+                            if (cfg.zoomXKey) _saveZoomToHash(chart, cfg.zoomXKey, cfg.zoomYKey);
+                        },
                     }
                 }
             },
@@ -248,6 +302,13 @@ function _createTimeSeriesChart(cfg) {
             }
         }
     });
+
+    // Restore zoom from URL hash if present
+    if (cfg.zoomXKey) {
+        _applyZoomFromHash(chart, cfg.zoomXKey, cfg.zoomYKey);
+    }
+
+    return chart;
 }
 
 /**
@@ -278,10 +339,11 @@ function chartSelectAll(checkboxSelector, checked, renderFn) {
 }
 
 /**
- * Reset zoom on a Chart.js instance.
+ * Reset zoom on a Chart.js instance and clear zoom hash params.
  */
-function chartResetZoom(chartRef) {
+function chartResetZoom(chartRef, xKey, yKey) {
     if (chartRef) chartRef.resetZoom();
+    if (xKey) _clearZoomHash(xKey, yKey);
 }
 
 function _detectHwVersion(json) {
@@ -830,6 +892,8 @@ function protoRenderChart() {
         datasets: datasets,
         titleText: T.chart_title || 'Charge Log',
         useLog: useLog,
+        zoomXKey: 'zx',
+        zoomYKey: 'zy',
     });
 
     // Persist selection in URL hash for sharing
@@ -841,7 +905,7 @@ function protoSelectAll(checked) {
 }
 
 function protoResetZoom() {
-    chartResetZoom(protoChart);
+    chartResetZoom(protoChart, 'zx', 'zy');
 }
 
 function vislog_report(data) {
@@ -953,7 +1017,7 @@ function cmSelectAll(checked) {
 }
 
 function cmResetZoom() {
-    chartResetZoom(cmChart);
+    chartResetZoom(cmChart, 'cmzx', 'cmzy');
 }
 
 function renderCmChart() {
@@ -1032,6 +1096,8 @@ function renderCmChart() {
         titleText: T.cm_chart_title || 'Charge Manager',
         useLog: useLog,
         xMaxTicksLimit: 10,
+        zoomXKey: 'cmzx',
+        zoomYKey: 'cmzy',
         xTickCallback: function(value) {
             const ts = nearestTimestamp(value);
             if (ts) return ts.split(' ')[1] || ts;
