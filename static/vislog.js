@@ -129,24 +129,18 @@ function _applyZoomFromHash(chart, xKey, yKey) {
     const params = _hashParams();
     const xZoom = params.get(xKey);
     const yZoom = params.get(yKey);
-    let applied = false;
     if (xZoom) {
         const parts = xZoom.split(',').map(Number);
         if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            chart.options.scales.x.min = parts[0];
-            chart.options.scales.x.max = parts[1];
-            applied = true;
+            chart.zoomScale('x', {min: parts[0], max: parts[1]}, 'none');
         }
     }
     if (yZoom) {
         const parts = yZoom.split(',').map(Number);
         if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-            chart.options.scales.y.min = parts[0];
-            chart.options.scales.y.max = parts[1];
-            applied = true;
+            chart.zoomScale('y', {min: parts[0], max: parts[1]}, 'none');
         }
     }
-    if (applied) chart.update('none');
 }
 
 function _clearZoomHash(xKey, yKey) {
