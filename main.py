@@ -694,7 +694,12 @@ def parse_charge_manager_trace(content):
       - summary_data: {column_key: [[row_idx, value], ...]} -> sparse pairs
       - timestamps: [[row_idx, "YYYY-MM-DD HH:MM:SS,mmm"], ...] -> sparse
       - events: [[row_idx, "RECV ..."], ...] -> sparse
-      - row_count: int -> total number of table rows
+      - row_count: int -> total number of table rows (or iterations if no table)
+
+    When no PM/PV table data is present (e.g. PV excess mode not enabled),
+    the parser falls back to an iteration-based mode where each timestamp
+    marks a new data point and summary/hysteresis/allocation values are
+    plotted against these iterations.
     """
     lines = content.split('\n')
 
@@ -707,6 +712,12 @@ def parse_charge_manager_trace(content):
     summary_data = {k: [] for k in summary_cols + alloc_cols + ['hysteresis']}
     timestamps = []
     events = []
+
+    # Iteration-level tracking for table-less traces (no PM/PV table data).
+    # Each timestamp starts a new iteration.
+    iter_count = 0
+    iter_timestamps_list = []
+    iter_summary = {k: [] for k in summary_cols + alloc_cols + ['hysteresis']}
 
     row_idx = 0
     in_table = False
@@ -732,13 +743,19 @@ def parse_charge_manager_trace(content):
             in_table = False
             if row_idx > 0:
                 timestamps.append([row_idx - 1, ts_m.group(1)])
+            # Track iteration-level timestamps for table-less fallback
+            iter_timestamps_list.append(ts_m.group(1))
+            iter_count += 1
             continue
 
         # Hysteresis
         hyst_m = hysteresis_re.match(stripped)
         if hyst_m:
+            hyst_val = int(hyst_m.group(1))
             if row_idx > 0:
-                summary_data['hysteresis'].append([row_idx - 1, int(hyst_m.group(1))])
+                summary_data['hysteresis'].append([row_idx - 1, hyst_val])
+            if iter_count > 0:
+                iter_summary['hysteresis'].append([iter_count - 1, hyst_val])
             continue
 
         # Summary lines (0: raw(...) or 9: raw(...))
@@ -750,6 +767,9 @@ def parse_charge_manager_trace(content):
             if row_idx > 0:
                 for name, val in zip(_CM_SUMMARY_NAMES, vals):
                     summary_data[prefix + name].append([row_idx - 1, val])
+            if iter_count > 0:
+                for name, val in zip(_CM_SUMMARY_NAMES, vals):
+                    iter_summary[prefix + name].append([iter_count - 1, val])
             continue
 
         # Allocation result: 9: [ ... ]
@@ -758,12 +778,18 @@ def parse_charge_manager_trace(content):
             inner = alloc_m.group(1).strip()
             # Parse "0 32000@3p" or just "0" (no allocation)
             at_m = re.search(r'(\d+)@(\d+)p', inner)
-            if at_m and row_idx > 0:
-                summary_data['alloc_current'].append([row_idx - 1, int(at_m.group(1))])
-                summary_data['alloc_phases'].append([row_idx - 1, int(at_m.group(2))])
-            elif row_idx > 0:
-                summary_data['alloc_current'].append([row_idx - 1, 0])
-                summary_data['alloc_phases'].append([row_idx - 1, 0])
+            if at_m:
+                alloc_current = int(at_m.group(1))
+                alloc_phases = int(at_m.group(2))
+            else:
+                alloc_current = 0
+                alloc_phases = 0
+            if row_idx > 0:
+                summary_data['alloc_current'].append([row_idx - 1, alloc_current])
+                summary_data['alloc_phases'].append([row_idx - 1, alloc_phases])
+            if iter_count > 0:
+                iter_summary['alloc_current'].append([iter_count - 1, alloc_current])
+                iter_summary['alloc_phases'].append([iter_count - 1, alloc_phases])
             continue
 
         # RECV event lines
@@ -796,13 +822,41 @@ def parse_charge_manager_trace(content):
                     table_data[key].append(val)
                 row_idx += 1
 
+    # If we have table data, return the table-based result (existing behavior).
+    if row_idx > 0:
+        return {
+            'columns': columns,
+            'table_data': table_data,
+            'summary_data': {k: v for k, v in summary_data.items() if v},
+            'timestamps': timestamps,
+            'events': events,
+            'row_count': row_idx,
+        }
+
+    # Fallback: no table data (e.g. PV excess mode not enabled).
+    # Use iteration-based indexing where each timestamp is one data point.
+    if iter_count > 0:
+        # Exclude PM/PV/phase table columns since they have no data
+        table_col_keys = set(col_keys)
+        iter_columns = [c for c in columns if c['key'] not in table_col_keys]
+
+        return {
+            'columns': iter_columns,
+            'table_data': {},
+            'summary_data': {k: v for k, v in iter_summary.items() if v},
+            'timestamps': [[i, ts] for i, ts in enumerate(iter_timestamps_list)],
+            'events': events,
+            'row_count': iter_count,
+        }
+
+    # No data at all
     return {
         'columns': columns,
         'table_data': table_data,
-        'summary_data': {k: v for k, v in summary_data.items() if v},
+        'summary_data': {},
         'timestamps': timestamps,
         'events': events,
-        'row_count': row_idx,
+        'row_count': 0,
     }
 
 
