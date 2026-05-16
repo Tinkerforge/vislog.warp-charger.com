@@ -224,9 +224,17 @@ def get_chart_config(t):
         'csv_title': 'resistance_cp_pe',
         'label':     t['chart_resistance_cp_pe'],
         'hidden':    True
-    }, { # new title
+    }, { # new title (bare CP/PE is unique in the CSV)
         'csv_title': 'CP/PE',
         'label':     t['chart_resistance_cp_pe'],
+        'hidden':    True
+    }, { # old title
+        'csv_title': 'resistance_pp_pe',
+        'label':     t['chart_resistance_pp_pe'],
+        'hidden':    True
+    }, { # new title (disambiguated by _disambiguate_csv_columns)
+        'csv_title': 'RESISTANCES PP/PE',
+        'label':     t['chart_resistance_pp_pe'],
         'hidden':    True
     }, {
         'csv_title': 'contactor_state',
@@ -965,6 +973,51 @@ def _sanitize_for_json(values):
     """Replace NaN/inf values with None for JSON serialization."""
     return [None if not math.isfinite(v) else v for v in values]
 
+_CSV_SECTION_HEADINGS = {
+    'STATE', 'HARDWARE CONFIG', 'ENERGY METER', 'ENERGY METER ERRORS',
+    'LL-State', 'ADC VALUES', 'VOLTAGES', 'RESISTANCES', 'GPIOs',
+}
+
+def _disambiguate_csv_columns(protocol_csv):
+    """Prefix duplicate column names with their section heading.
+
+    The CSV uses certain columns (e.g. RESISTANCES, VOLTAGES, ADC VALUES) as
+    section headings.  When a column name like ``CP/PE`` appears under multiple
+    sections, pandas would silently append ``.1``, ``.2`` etc. which is fragile
+    across firmware versions.  Instead, we rename duplicates by prefixing them
+    with their section heading, e.g. ``RESISTANCES CP/PE``.  Only the *second
+    and subsequent* occurrences are renamed so that the first occurrence keeps
+    its original name for backwards compatibility.
+    """
+    lines = protocol_csv.split('\n')
+    if not lines:
+        return protocol_csv
+
+    headers = lines[0].split(',')
+    seen = {}          # name -> count of previous occurrences
+    current_section = None
+    new_headers = []
+
+    for h in headers:
+        stripped = h.strip()
+        if stripped in _CSV_SECTION_HEADINGS:
+            current_section = stripped
+
+        if stripped in seen and seen[stripped] >= 1:
+            # Duplicate – prefix with current section heading if available
+            if current_section:
+                new_name = f"{current_section} {stripped}"
+            else:
+                new_name = f"{stripped}.{seen[stripped]}"
+            new_headers.append(new_name)
+        else:
+            new_headers.append(h)
+
+        seen[stripped] = seen.get(stripped, 0) + 1
+
+    lines[0] = ','.join(new_headers)
+    return '\n'.join(lines)
+
 def parse_protocol_data(data):
     # Parse protocol data and extract available columns
     before_protocol_json = _get_block(data, 0, {}, parse_json=True)
@@ -974,6 +1027,9 @@ def parse_protocol_data(data):
     after_protocol_log   = _get_block(data, 4, "")
 
     try:
+        # Disambiguate duplicate column names using section headings
+        protocol_csv = _disambiguate_csv_columns(protocol_csv)
+
         # Get timestamp data from CSV
         df = pd.read_csv(StringIO(protocol_csv))
 
@@ -991,9 +1047,10 @@ def parse_protocol_data(data):
     # Get available columns for dynamic selection
     available_columns = []
     if df is not None:
-        # Filter out placeholder columns (all uppercase) and 'millis' column
+        # Filter out section heading columns and 'millis' column.
+        # Section headings contain all-NaN data but we exclude them early.
         available_columns = [col for col in df.columns
-                           if col != 'millis' and not col.isupper()]
+                           if col != 'millis' and col not in _CSV_SECTION_HEADINGS]
 
     return {
         'before_protocol_json': before_protocol_json,
