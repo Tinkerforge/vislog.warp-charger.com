@@ -955,8 +955,9 @@ function initCmChart(data) {
         groups[col.group].push(col);
     });
 
-    // Default selected: PM group + first few key columns
-    const defaultKeys = new Set(['pm_mtr', 'pm_avl', 'pv_raw', 's0_raw_total', 's9_raw_total', 'alloc_current']);
+    // Default selected: PV group key columns + summary/allocation overview.
+    // pm_bat only exists in newer traces; missing keys are simply ignored.
+    const defaultKeys = new Set(['pm_mtr', 'pm_bat', 'pm_avl', 'pv_raw', 's0_raw_total', 's9_raw_total', 'alloc_current']);
 
     // Restore selection from URL hash if present
     const hashState = _cmParseHash();
@@ -971,6 +972,8 @@ function initCmChart(data) {
         groupDiv.className = 'chart-column-group';
         const heading = document.createElement('h6');
         heading.textContent = groupName;
+        const groupDesc = _cmGroupDesc(groupName);
+        if (groupDesc) heading.appendChild(_cmInfoBtn(groupDesc));
         groupDiv.appendChild(heading);
 
         cols.forEach(col => {
@@ -982,6 +985,8 @@ function initCmChart(data) {
             cb.addEventListener('change', renderCmChart);
             label.appendChild(cb);
             label.appendChild(document.createTextNode(' ' + col.label));
+            const desc = _cmColumnDesc(col.key);
+            if (desc) label.appendChild(_cmInfoBtn(desc));
             groupDiv.appendChild(label);
         });
 
@@ -996,6 +1001,47 @@ function initCmChart(data) {
 
     // Auto-render with defaults/restored state
     renderCmChart();
+}
+
+// Create a clickable (i) info button that shows the given description in a
+// popover. Same pattern as the JSON viewer field info buttons.
+function _cmInfoBtn(desc) {
+    const btn = document.createElement('i');
+    btn.className = 'bi bi-info-circle cm-info-btn';
+    btn.setAttribute('tabindex', '0');
+    btn.setAttribute('role', 'button');
+    // Prevent toggling the surrounding label's checkbox when clicking the icon
+    btn.addEventListener('click', e => e.preventDefault());
+
+    new bootstrap.Popover(btn, {
+        content: desc,
+        placement: 'right',
+        trigger: 'focus',
+        fallbackPlacements: ['right', 'left', 'top', 'bottom'],
+        customClass: 'field-info-popover',
+    });
+    return btn;
+}
+
+// Help text for a column group heading (from i18n dict T).
+function _cmGroupDesc(groupName) {
+    if (groupName === 'PV') return T.cm_group_desc_pv;
+    if (/^L[123]$/.test(groupName)) return T.cm_group_desc_lx;
+    if (groupName === 'Step 0') return T.cm_group_desc_s0;
+    if (groupName === 'Step 9') return T.cm_group_desc_s9;
+    if (groupName === 'Allocation') return T.cm_group_desc_alloc;
+    return null;
+}
+
+// Help text for a single column (from i18n dict T). The three phase groups
+// L1-L3 share their descriptions via the lx_ prefix; the summary columns of
+// step 0 and step 9 share theirs via the sx_ prefix and _lx suffix.
+function _cmColumnDesc(key) {
+    const normalized = key
+        .replace(/^l[123]_/, 'lx_')
+        .replace(/^s[09]_/, 'sx_')
+        .replace(/_L[123]$/, '_lx');
+    return T['cm_desc_' + normalized] || null;
 }
 
 function _cmParseHash() {

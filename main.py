@@ -616,21 +616,35 @@ def parse_coredump(coredump_blocks):
 def _detect_cm_header(lines):
     """Scan lines for CM header format flags.
 
-    Returns (has_pv, has_phases) indicating which optional column groups
-    are present in the charge manager trace.
+    The table header is a pair of lines: a group line ("PM    PV | L1 ...")
+    followed by a column line ("mtr(W) [bat(W)] avl(W) raw ..."). Note that
+    "PM" is just a marker meaning "power manager values follow", not a
+    column group heading: mtr/bat/avl semantically belong to the PV group.
+
+    Returns (has_pv, has_phases, has_bat) indicating which optional columns
+    are present in the charge manager trace. ``bat(W)`` (battery storage
+    power) was added to the column line by newer firmwares.
     """
     has_pv = False
     has_phases = False
+    has_bat = False
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith('PM') or (stripped.startswith('mtr') and 'avl' in stripped):
-            if 'PV' in stripped:
-                has_pv = True
-            if 'L1' in stripped:
-                has_phases = True
-            if has_pv or has_phases:
-                break
-    return has_pv, has_phases
+        is_group_header = stripped.startswith('PM')
+        is_column_header = stripped.startswith('mtr') and 'avl' in stripped
+        if not (is_group_header or is_column_header):
+            continue
+        if 'PV' in stripped:
+            has_pv = True
+        if 'L1' in stripped:
+            has_phases = True
+        if 'bat' in stripped:
+            has_bat = True
+        if is_column_header:
+            # The column line follows the group line, so the header pair
+            # has been fully seen at this point.
+            break
+    return has_pv, has_phases, has_bat
 
 
 # Shared name list for summary columns (raw/min/spread × total/L1-L3 + max_pv)
@@ -641,7 +655,7 @@ _CM_SUMMARY_NAMES = [
 ] + ['max_pv']
 
 
-def _build_cm_columns(has_pv, has_phases):
+def _build_cm_columns(has_pv, has_phases, has_bat):
     """Build column definitions for a charge manager trace.
 
     Returns (columns, col_keys, summary_cols, alloc_cols) where:
@@ -653,10 +667,16 @@ def _build_cm_columns(has_pv, has_phases):
     columns = []
     col_keys = []
 
-    # PM columns (always present)
-    for name in ['mtr', 'avl']:
+    # Power manager columns (always present). Semantically these belong to
+    # the PV group ("relevant values for PV excess charging"), the "PM" in
+    # the trace header is only a marker, not a column group heading.
+    # bat(W) (battery storage power) only exists in newer firmwares.
+    # The keys keep their historic pm_ prefix so that column selections
+    # stored in shared URL hashes remain valid.
+    pm_names = ['mtr', 'bat', 'avl'] if has_bat else ['mtr', 'avl']
+    for name in pm_names:
         key = f'pm_{name}'
-        columns.append({'key': key, 'label': f'PM {name}(W)', 'group': 'PM'})
+        columns.append({'key': key, 'label': f'PV {name}(W)', 'group': 'PV'})
         col_keys.append(key)
 
     # PV columns (if PV present in header)
@@ -711,8 +731,8 @@ def parse_charge_manager_trace(content):
     """
     lines = content.split('\n')
 
-    has_pv, has_phases = _detect_cm_header(lines)
-    columns, col_keys, summary_cols, alloc_cols = _build_cm_columns(has_pv, has_phases)
+    has_pv, has_phases, has_bat = _detect_cm_header(lines)
+    columns, col_keys, summary_cols, alloc_cols = _build_cm_columns(has_pv, has_phases, has_bat)
     expected_cols = len(col_keys)
 
     # --- Parse data ---

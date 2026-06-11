@@ -186,6 +186,22 @@ body {
   color: var(--bs-primary);
 }
 
+/* Inline (i) info buttons in chart column selectors */
+.cm-info-btn {
+  font-size: 0.75rem;
+  color: var(--bs-info);
+  cursor: pointer;
+  opacity: 0.7;
+  margin-left: 0.3rem;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.cm-info-btn:hover,
+.cm-info-btn:focus {
+  opacity: 1;
+  color: var(--bs-primary);
+}
+
 .chart-column-group input[type="checkbox"] {
   margin-right: 0.35rem;
 }
