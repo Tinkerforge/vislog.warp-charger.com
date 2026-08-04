@@ -896,9 +896,14 @@ def parse_meters(report_json):
 
     Each section contains 'samples': one entry per meter slot, which is either
     null (no meter configured for that slot) or an array of floats/nulls.
-    Returns a dict {'history': [...], 'live': [...]} with one entry per
-    configured slot ({'slot': N, 'name': str, 'samples': [...]}), or None if
-    neither section contains data.
+    'offset' is the age of the newest sample in milliseconds. For live data
+    'samples_per_second' gives the sample rate (approaches 2 Hz); history has
+    a fixed rate of one sample every 4 minutes (720 samples over 48 hours).
+
+    Returns a dict {'history': {...}, 'live': {...}} where each section is
+    {'offset': ms, 'samples_per_second': float|None, 'slots': [...]} with one
+    slot entry per configured meter ({'slot': N, 'name': str, 'samples':
+    [...]}), or None if neither section contains data.
     """
     def slot_name(slot):
         # meters/N/config is [meter_class, {config...}]
@@ -929,7 +934,11 @@ def parse_meters(report_json):
                 'samples': values,
             })
         if slots:
-            result[key] = slots
+            result[key] = {
+                'offset': section.get('offset', 0),
+                'samples_per_second': section.get('samples_per_second'),
+                'slots': slots,
+            }
 
     return result if result else None
 

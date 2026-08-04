@@ -1177,6 +1177,11 @@ function initMetersCharts(data) {
     renderMetersCharts();
 }
 
+// History has a fixed sample rate: 720 samples over 48 hours = 4 minutes.
+const METERS_HISTORY_INTERVAL_S = 240;
+// Live sampling approaches 2 Hz; used only if samples_per_second is missing.
+const METERS_LIVE_FALLBACK_SPS = 2;
+
 function renderMetersCharts() {
     if (!metersData) return;
 
@@ -1184,39 +1189,73 @@ function renderMetersCharts() {
         metersHistoryChart = _renderMetersChart({
             canvasId: 'meters-history-chart',
             prevChart: metersHistoryChart,
-            slots: metersData.history,
+            section: metersData.history,
+            intervalSeconds: METERS_HISTORY_INTERVAL_S,
             zoomXKey: 'mhzx',
             zoomYKey: 'mhzy',
         });
     }
 
     if (metersData.live) {
+        const sps = metersData.live.samples_per_second;
         metersLiveChart = _renderMetersChart({
             canvasId: 'meters-live-chart',
             prevChart: metersLiveChart,
-            slots: metersData.live,
+            section: metersData.live,
+            intervalSeconds: 1 / (sps > 0 ? sps : METERS_LIVE_FALLBACK_SPS),
             zoomXKey: 'mlzx',
             zoomYKey: 'mlzy',
         });
     }
 }
 
+// Format elapsed seconds as "H:MM:SS" / "M:SS".
+function _formatMetersRelTime(seconds, withDecimals) {
+    const sign = seconds < 0 ? '-' : '';
+    let s = Math.abs(seconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = withDecimals ? (s % 60).toFixed(1) : String(Math.floor(s % 60));
+    const pad = v => String(v).padStart(2, '0');
+    const padSec = sec.length < (withDecimals ? 4 : 2) ? '0' + sec : sec;
+    if (h > 0) return `${sign}${h}:${pad(m)}:${padSec}`;
+    return `${sign}${m}:${padSec}`;
+}
+
 function _renderMetersChart(cfg) {
+    const slots = cfg.section.slots;
     // All slot sample arrays have the same length; use the longest to be safe
-    const sampleCount = Math.max(...cfg.slots.map(s => s.samples.length));
+    const totalCount = Math.max(...slots.map(s => s.samples.length));
+
+    // Trim leading samples where no slot has seen a value yet, so the time
+    // axis starts at 0 at the first available data point.
+    let firstIdx = 0;
+    while (firstIdx < totalCount &&
+           !slots.some(s => s.samples[firstIdx] != null)) {
+        firstIdx++;
+    }
+    if (firstIdx >= totalCount) firstIdx = 0;  // all samples null
+    const sampleCount = totalCount - firstIdx;
+
+    // Elapsed time since the first available sample
+    const sampleTime = i => i * cfg.intervalSeconds;
+
     const labels = [];
     for (let i = 0; i < sampleCount; i++) {
         labels.push(i);
     }
 
-    const datasets = cfg.slots.map((slot, idx) => {
-        const ds = _chartDataset(slot.name, slot.samples, idx);
+    const datasets = slots.map((slot, idx) => {
+        const ds = _chartDataset(slot.name, slot.samples.slice(firstIdx), idx);
         // Sample arrays may be mostly null (no value seen yet); draw small
         // points so isolated values are visible despite the line gaps.
         ds.pointRadius = 1.5;
         ds.spanGaps = false;
         return ds;
     });
+
+    // Sub-minute sample spacing (live data): show tooltip time with decimals
+    const withDecimals = cfg.intervalSeconds < 60;
 
     return _createTimeSeriesChart({
         canvasId: cfg.canvasId,
@@ -1228,9 +1267,14 @@ function _renderMetersChart(cfg) {
         yTitle: T.meters_power_axis || 'Power [W]',
         zoomXKey: cfg.zoomXKey,
         zoomYKey: cfg.zoomYKey,
+        xTickCallback: function(value) {
+            return _formatMetersRelTime(sampleTime(value), false);
+        },
         tooltipTitleCallback: function(items) {
             if (!items.length) return '';
-            return (T.meters_sample_axis || 'Sample') + ' ' + items[0].dataIndex;
+            const idx = items[0].dataIndex;
+            return _formatMetersRelTime(sampleTime(idx), withDecimals)
+                + ' (' + (T.meters_sample_axis || 'Sample') + ' ' + (firstIdx + idx) + ')';
         },
     });
 }
