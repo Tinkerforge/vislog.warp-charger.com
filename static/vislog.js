@@ -251,7 +251,7 @@ function _createTimeSeriesChart(cfg) {
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 title: {
-                    display: true,
+                    display: !!cfg.titleText,
                     text: cfg.titleText,
                     color: textColor,
                 },
@@ -1185,7 +1185,6 @@ function renderMetersCharts() {
             canvasId: 'meters-history-chart',
             prevChart: metersHistoryChart,
             slots: metersData.history,
-            titleText: T.meters_history_title || 'meters/history',
             zoomXKey: 'mhzx',
             zoomYKey: 'mhzy',
         });
@@ -1196,7 +1195,6 @@ function renderMetersCharts() {
             canvasId: 'meters-live-chart',
             prevChart: metersLiveChart,
             slots: metersData.live,
-            titleText: T.meters_live_title || 'meters/live',
             zoomXKey: 'mlzx',
             zoomYKey: 'mlzy',
         });
@@ -1225,7 +1223,6 @@ function _renderMetersChart(cfg) {
         prevChart: cfg.prevChart,
         labels: labels,
         datasets: datasets,
-        titleText: cfg.titleText,
         useLog: false,
         xMaxTicksLimit: 15,
         yTitle: T.meters_power_axis || 'Power [W]',

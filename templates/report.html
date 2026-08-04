@@ -48,7 +48,7 @@
         {% if data.meters_parsed %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="meters-tab" data-bs-toggle="tab" data-bs-target="#report-meters" type="button" role="tab">
-                <i class="bi bi-speedometer2"></i> {{ t.tab_meters }}
+                <i class="bi bi-graph-up"></i> {{ t.tab_meters }}
             </button>
         </li>
         {% endif %}
@@ -93,7 +93,7 @@
             {% if data.meters_parsed.history %}
             <div class="card mb-3">
                 <div class="card-header d-flex flex-wrap align-items-center gap-2">
-                    <span><i class="bi bi-graph-up"></i> {{ t.meters_history_title }}</span>
+                    <span>{{ t.meters_history_title }}</span>
                     <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersHistoryResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
                 </div>
                 <div class="card-body">
@@ -106,7 +106,7 @@
             {% if data.meters_parsed.live %}
             <div class="card mb-3">
                 <div class="card-header d-flex flex-wrap align-items-center gap-2">
-                    <span><i class="bi bi-graph-up"></i> {{ t.meters_live_title }}</span>
+                    <span>{{ t.meters_live_title }}</span>
                     <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersLiveResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
                 </div>
                 <div class="card-body">
