@@ -23,6 +23,16 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
 UUID_PATTERN = re.compile(r'^[a-zA-Z0-9]+$')
 
 
+@app.url_defaults
+def _static_cache_busting(endpoint, values):
+    if endpoint == 'static' and 'filename' in values:
+        path = os.path.join(app.static_folder, values['filename'])
+        try:
+            values['v'] = int(os.stat(path).st_mtime)
+        except OSError:
+            pass
+
+
 def _detect_language():
     accept = request.headers.get('Accept-Language', '')
     # Simple parser: look for 'en' or 'de' with highest quality
