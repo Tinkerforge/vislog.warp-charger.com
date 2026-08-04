@@ -203,6 +203,7 @@ const CHART_COLORS = [
  * @param {Function}      [cfg.xTickCallback]    - custom x-axis tick callback
  * @param {Function}      [cfg.tooltipTitleCallback] - custom tooltip title callback
  * @param {number}        [cfg.xMaxTicksLimit]   - max x-axis tick count
+ * @param {string}        [cfg.yTitle]           - y-axis title text
  * @param {string}        [cfg.zoomXKey]         - URL hash key for x-axis zoom (enables zoom persistence)
  * @param {string}        [cfg.zoomYKey]         - URL hash key for y-axis zoom
  * @returns {Chart}       the new Chart instance
@@ -226,6 +227,9 @@ function _createTimeSeriesChart(cfg) {
     };
     if (cfg.useLog) {
         yScale.type = 'logarithmic';
+    }
+    if (cfg.yTitle) {
+        yScale.title = { display: true, text: cfg.yTitle, color: textColor };
     }
 
     const xTicks = { color: textColor };
@@ -932,6 +936,11 @@ function vislog_report(data) {
         initCmChart(data.cm_parsed);
     }
 
+    // Initialize meters history/live charts if parsed data is available
+    if (data.meters_parsed) {
+        initMetersCharts(data.meters_parsed);
+    }
+
     // Coredump is now rendered server-side, no JS needed
 }
 
@@ -1153,4 +1162,86 @@ function renderCmChart() {
 
     // Persist selection in URL hash for sharing
     _cmUpdateHash();
+}
+
+// ---------------------------------------------------------------------------
+// Meters History/Live Charts
+// ---------------------------------------------------------------------------
+let metersData = null;
+let metersHistoryChart = null;
+let metersLiveChart = null;
+
+function initMetersCharts(data) {
+    metersData = data;
+    if (!metersData) return;
+    renderMetersCharts();
+}
+
+function renderMetersCharts() {
+    if (!metersData) return;
+
+    if (metersData.history) {
+        metersHistoryChart = _renderMetersChart({
+            canvasId: 'meters-history-chart',
+            prevChart: metersHistoryChart,
+            slots: metersData.history,
+            titleText: T.meters_history_title || 'meters/history',
+            zoomXKey: 'mhzx',
+            zoomYKey: 'mhzy',
+        });
+    }
+
+    if (metersData.live) {
+        metersLiveChart = _renderMetersChart({
+            canvasId: 'meters-live-chart',
+            prevChart: metersLiveChart,
+            slots: metersData.live,
+            titleText: T.meters_live_title || 'meters/live',
+            zoomXKey: 'mlzx',
+            zoomYKey: 'mlzy',
+        });
+    }
+}
+
+function _renderMetersChart(cfg) {
+    // All slot sample arrays have the same length; use the longest to be safe
+    const sampleCount = Math.max(...cfg.slots.map(s => s.samples.length));
+    const labels = [];
+    for (let i = 0; i < sampleCount; i++) {
+        labels.push(i);
+    }
+
+    const datasets = cfg.slots.map((slot, idx) => {
+        const ds = _chartDataset(slot.name, slot.samples, idx);
+        // Sample arrays may be mostly null (no value seen yet); draw small
+        // points so isolated values are visible despite the line gaps.
+        ds.pointRadius = 1.5;
+        ds.spanGaps = false;
+        return ds;
+    });
+
+    return _createTimeSeriesChart({
+        canvasId: cfg.canvasId,
+        prevChart: cfg.prevChart,
+        labels: labels,
+        datasets: datasets,
+        titleText: cfg.titleText,
+        useLog: false,
+        xMaxTicksLimit: 15,
+        yTitle: T.meters_power_axis || 'Power [W]',
+        zoomXKey: cfg.zoomXKey,
+        zoomYKey: cfg.zoomYKey,
+        tooltipTitleCallback: function(items) {
+            if (!items.length) return '';
+            return (T.meters_sample_axis || 'Sample') + ' ' + items[0].dataIndex;
+        },
+    });
+}
+
+function metersHistoryResetZoom() {
+    chartResetZoom(metersHistoryChart, 'mhzx', 'mhzy');
+}
+
+function metersLiveResetZoom() {
+    chartResetZoom(metersLiveChart, 'mlzx', 'mlzy');
 }

@@ -9,7 +9,7 @@
 #   git clone --depth=1 --filter=blob:none --sparse \
 #       git@github.com:Tinkerforge/warp-charger.git warp-charger
 #   cd warp-charger
-#   git sparse-checkout set api_doc_generator
+#   git sparse-checkout set --no-cone '/api_doc_generator/' '/firmwares/*_firmware_v*.txt'
 
 set -e
 

@@ -5,7 +5,7 @@
 
 {% block extra_head %}
     <script src="{{ url_for('static', filename='jsonview.js') }}"></script>
-    {% if data.cm_parsed %}
+    {% if data.cm_parsed or data.meters_parsed %}
     <script src="{{ url_for('static', filename='chart.js') }}"></script>
     <script src="{{ url_for('static', filename='hammer.min.js') }}"></script>
     <script src="{{ url_for('static', filename='chartjs-plugin-zoom.min.js') }}"></script>
@@ -13,6 +13,26 @@
 {% endblock %}
 
 {% block body %}
+    {% if data.firmware_check %}
+    {% if data.firmware_check.level == 'danger' %}
+    <div class="alert alert-danger d-flex align-items-center gap-2 fs-5 mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <div>
+            <strong>{{ t.warning_label }}</strong>
+            {{ t.firmware_outdated_warning.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-3" role="alert">
+        <i class="bi bi-info-circle-fill"></i>
+        <div>
+            <strong>{{ t.hint_label }}</strong>
+            {{ t.firmware_nonrelease_info.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
@@ -25,6 +45,13 @@
                 <i class="bi bi-journal-text"></i> {{ t.tab_event_log }}
             </button>
         </li>
+        {% if data.meters_parsed %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="meters-tab" data-bs-toggle="tab" data-bs-target="#report-meters" type="button" role="tab">
+                <i class="bi bi-speedometer2"></i> {{ t.tab_meters }}
+            </button>
+        </li>
+        {% endif %}
         {% if data.report_trace %}
         <li class="nav-item" role="presentation">
             <button class="nav-link" id="trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" type="button" role="tab">
@@ -61,6 +88,36 @@
         <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
             <textarea id="report-log-text" class="form-control log-textarea" rows="40" readonly></textarea>
         </div>
+        {% if data.meters_parsed %}
+        <div class="tab-pane fade p-3" id="report-meters" role="tabpanel">
+            {% if data.meters_parsed.history %}
+            <div class="card mb-3">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                    <span><i class="bi bi-graph-up"></i> {{ t.meters_history_title }}</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersHistoryResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
+                </div>
+                <div class="card-body">
+                    <div class="meters-chart-wrap">
+                        <canvas id="meters-history-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% if data.meters_parsed.live %}
+            <div class="card mb-3">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                    <span><i class="bi bi-graph-up"></i> {{ t.meters_live_title }}</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersLiveResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
+                </div>
+                <div class="card-body">
+                    <div class="meters-chart-wrap">
+                        <canvas id="meters-live-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
         {% if data.report_trace %}
         <div class="tab-pane fade p-3" id="report-trace" role="tabpanel">
             <textarea id="report-trace-text" class="form-control log-textarea" rows="40" readonly></textarea>
@@ -201,6 +258,7 @@
         // Called by toggleTheme() in vislog.js via the onThemeChanged hook
         function onThemeChanged(theme) {
             if (typeof renderCmChart === 'function' && cmData) renderCmChart();
+            if (typeof renderMetersCharts === 'function' && metersData) renderMetersCharts();
         }
 
         // Initialize

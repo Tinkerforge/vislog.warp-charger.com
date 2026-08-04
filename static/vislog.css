@@ -591,3 +591,18 @@ footer a:hover {
     height: 50vh;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Meters History/Live Charts
+   -------------------------------------------------------------------------- */
+.meters-chart-wrap {
+  position: relative;
+  height: 45vh;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .meters-chart-wrap {
+    height: 40vh;
+  }
+}

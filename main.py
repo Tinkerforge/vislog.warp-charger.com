@@ -888,6 +888,144 @@ def parse_charge_manager_trace(content):
     }
 
 
+# ---------------------------------------------------------------------------
+# Meters history/live parsing
+# ---------------------------------------------------------------------------
+def parse_meters(report_json):
+    """Extract meters/history and meters/live samples from the report JSON.
+
+    Each section contains 'samples': one entry per meter slot, which is either
+    null (no meter configured for that slot) or an array of floats/nulls.
+    Returns a dict {'history': [...], 'live': [...]} with one entry per
+    configured slot ({'slot': N, 'name': str, 'samples': [...]}), or None if
+    neither section contains data.
+    """
+    def slot_name(slot):
+        # meters/N/config is [meter_class, {config...}]
+        config = report_json.get(f'meters/{slot}/config')
+        try:
+            name = config[1].get('display_name')
+            if name:
+                return name
+        except (TypeError, IndexError, KeyError, AttributeError):
+            pass
+        return f'Meter #{slot}'
+
+    result = {}
+    for key in ('history', 'live'):
+        section = report_json.get(f'meters/{key}')
+        if not isinstance(section, dict):
+            continue
+        samples = section.get('samples')
+        if not isinstance(samples, list):
+            continue
+        slots = []
+        for slot, values in enumerate(samples):
+            if not isinstance(values, list):
+                continue  # null => no meter configured for this slot
+            slots.append({
+                'slot': slot,
+                'name': slot_name(slot),
+                'samples': values,
+            })
+        if slots:
+            result[key] = slots
+
+    return result if result else None
+
+
+# ---------------------------------------------------------------------------
+# Firmware version check
+# ---------------------------------------------------------------------------
+FIRMWARE_INDEX_MAP = {
+    'warp':  'warp_firmware_v2.txt',
+    'warp2': 'warp2_firmware_v2.txt',
+    'warp3': 'warp3_firmware_v2.txt',
+    'warp4': 'warp4_firmware_v3.txt',
+    'wem':   'energy_manager_firmware_v2.txt',
+    'wem2':  'energy_manager_v2_firmware_v2.txt',
+    'seb':   'smart_energy_broker_firmware_v2.txt',
+}
+
+FIRMWARES_DIR = os.path.join(os.path.dirname(__file__), 'firmwares')
+
+# Cache: filename -> (mtime, [versions])
+_firmware_index_cache = {}
+
+
+def _read_firmware_index(filename):
+    """Read a firmware version index file with mtime-based caching.
+
+    Returns a list of full version strings (e.g. '2.12.1+6a4f9137'),
+    newest first, or None if the file is not available.
+    """
+    path = os.path.join(FIRMWARES_DIR, filename)
+    try:
+        mtime = os.stat(path).st_mtime
+        cached = _firmware_index_cache.get(filename)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        with open(path, 'r', encoding='utf-8') as f:
+            versions = [line.strip() for line in f if line.strip()]
+        _firmware_index_cache[filename] = (mtime, versions)
+        return versions
+    except OSError:
+        return None
+
+
+def _parse_base_version(version):
+    """Parse the numeric part of a version string like '2.12.1+6a4f9137'.
+
+    Returns a tuple of ints or None if unparseable.
+    """
+    base = version.split('+')[0].split('-')[0]
+    try:
+        return tuple(int(p) for p in base.split('.'))
+    except ValueError:
+        return None
+
+
+def check_firmware_version(report_json):
+    """Compare the report's firmware version against the released versions.
+
+    Returns None if everything is fine (or the check is not possible),
+    otherwise a dict:
+      {'level': 'danger'|'info', 'reported': str, 'latest': str}
+    - danger: reported base version is older than the latest release
+    - info:   reported version is not a released build (hash mismatch or
+              newer than the latest release)
+    """
+    try:
+        reported = report_json['info/version']['firmware']
+        device_type = report_json['info/name']['type']
+    except (KeyError, TypeError):
+        return None
+
+    index_file = FIRMWARE_INDEX_MAP.get(device_type)
+    if index_file is None:
+        return None
+
+    versions = _read_firmware_index(index_file)
+    if not versions:
+        return None
+
+    latest = versions[0]
+    reported_base = _parse_base_version(reported)
+    latest_base = _parse_base_version(latest)
+    if reported_base is None or latest_base is None:
+        return None
+
+    if reported_base < latest_base:
+        return {'level': 'danger', 'reported': reported, 'latest': latest}
+
+    if reported not in versions:
+        # Same or newer base version, but not a released build
+        # (dev/custom build or newer than the latest release).
+        return {'level': 'info', 'reported': reported, 'latest': latest}
+
+    return None
+
+
 def handle_report(data, lang, t):
     try:
         # Fix json syntax error that can happen in report
@@ -968,6 +1106,20 @@ def handle_report(data, lang, t):
             print(f"Warning: Failed to parse charge_manager trace: {e}")
             cm_parsed = None
 
+    # Parse meters/history and meters/live for chart visualization
+    try:
+        meters_parsed = parse_meters(report_json)
+    except Exception as e:
+        print(f"Warning: Failed to parse meters history/live: {e}")
+        meters_parsed = None
+
+    # Check whether the report's firmware is a current release
+    try:
+        firmware_check = check_firmware_version(report_json)
+    except Exception as e:
+        print(f"Warning: Failed to check firmware version: {e}")
+        firmware_check = None
+
     data = {
         'report_json':  report_json,
         'report_log':   report_log,
@@ -975,6 +1127,8 @@ def handle_report(data, lang, t):
         'trace_modules': trace_modules,
         'coredump_info': coredump_info,
         'cm_parsed': cm_parsed,
+        'meters_parsed': meters_parsed,
+        'firmware_check': firmware_check,
         'api_constants': api_constants[lang],
     }
 

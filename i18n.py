@@ -51,6 +51,13 @@ TRANSLATIONS = {
         'coredump_hint_suffix': '-Skript aus dem esp32-firmware Repository verwendet werden.',
         'hint_label': 'Hinweis:',
         'no_coredump': 'Es befindet sich kein Coredump im Debug-Report.',
+        'tab_meters': 'Zähler',
+        'meters_history_title': 'Zähler-Verlauf (meters/history)',
+        'meters_live_title': 'Zähler-Live-Daten (meters/live)',
+        'meters_power_axis': 'Leistung [W]',
+        'meters_sample_axis': 'Sample',
+        'firmware_outdated_warning': 'Dieser Debug-Report stammt von einer veralteten Firmware (${reported}). Die aktuelle Firmware ist ${latest}.',
+        'firmware_nonrelease_info': 'Die Firmware dieses Debug-Reports (${reported}) ist kein offizielles Release. Aktuelles Release: ${latest}.',
 
         # --- warnings ---
         'warning_label': 'Achtung:',
@@ -200,6 +207,13 @@ TRANSLATIONS = {
         'coredump_hint_suffix': ' script from the esp32-firmware repository.',
         'hint_label': 'Note:',
         'no_coredump': 'No coredump found in the debug report.',
+        'tab_meters': 'Meters',
+        'meters_history_title': 'Meter history (meters/history)',
+        'meters_live_title': 'Meter live data (meters/live)',
+        'meters_power_axis': 'Power [W]',
+        'meters_sample_axis': 'Sample',
+        'firmware_outdated_warning': 'This debug report was created with an outdated firmware (${reported}). The current firmware is ${latest}.',
+        'firmware_nonrelease_info': 'The firmware of this debug report (${reported}) is not an official release. Current release: ${latest}.',
 
         # --- warnings ---
         'warning_label': 'Warning:',
