@@ -56,6 +56,8 @@ TRANSLATIONS = {
         'meters_live_title': 'Zähler-Live-Daten (meters/live)',
         'meters_power_axis': 'Leistung [W]',
         'meters_sample_axis': 'Sample',
+        'meters_time_axis_utc': 'Zeit (UTC)',
+        'meters_time_axis_rel': 'Zeit vor Report-Erstellung',
         'firmware_outdated_warning': 'Dieser Debug-Report stammt von einer veralteten Firmware (${reported}). Die aktuelle Firmware ist ${latest}.',
         'firmware_nonrelease_info': 'Die Firmware dieses Debug-Reports (${reported}) ist kein offizielles Release. Aktuelles Release: ${latest}.',
 
@@ -212,6 +214,8 @@ TRANSLATIONS = {
         'meters_live_title': 'Meter live data (meters/live)',
         'meters_power_axis': 'Power [W]',
         'meters_sample_axis': 'Sample',
+        'meters_time_axis_utc': 'Time (UTC)',
+        'meters_time_axis_rel': 'Time before report creation',
         'firmware_outdated_warning': 'This debug report was created with an outdated firmware (${reported}). The current firmware is ${latest}.',
         'firmware_nonrelease_info': 'The firmware of this debug report (${reported}) is not an official release. Current release: ${latest}.',
 

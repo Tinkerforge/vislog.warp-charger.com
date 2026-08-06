@@ -910,10 +910,12 @@ def parse_meters(report_json):
     'samples_per_second' gives the sample rate (approaches 2 Hz); history has
     a fixed rate of one sample every 4 minutes (720 samples over 48 hours).
 
-    Returns a dict {'history': {...}, 'live': {...}} where each section is
-    {'offset': ms, 'samples_per_second': float|None, 'slots': [...]} with one
-    slot entry per configured meter ({'slot': N, 'name': str, 'samples':
-    [...]}), or None if neither section contains data.
+    Returns a dict {'history': {...}, 'live': {...}, 'report_time': ...}
+    where each section is {'offset': ms, 'samples_per_second': float|None,
+    'slots': [...]} with one slot entry per configured meter ({'slot': N,
+    'name': str, 'samples': [...]}), and 'report_time' is the report's
+    creation time as UTC epoch seconds (from rtc/time, None if unknown).
+    Returns None if neither section contains data.
     """
     def slot_name(slot):
         # meters/N/config is [meter_class, {config...}]
@@ -950,7 +952,33 @@ def parse_meters(report_json):
                 'slots': slots,
             }
 
+    if result:
+        # Absolute time reference (UTC epoch seconds) for the x-axis
+        result['report_time'] = _report_timestamp(report_json)
+
     return result if result else None
+
+
+def _report_timestamp(report_json):
+    """Determine when the report was created, from rtc/time (UTC).
+
+    Returns UTC epoch seconds or None if no plausible time is available
+    (e.g. the RTC was never synchronized).
+    """
+    rtc = report_json.get('rtc/time')
+    if not isinstance(rtc, dict):
+        return None
+    try:
+        dt = datetime.datetime(
+            rtc['year'], rtc['month'], rtc['day'],
+            rtc['hour'], rtc['minute'], rtc['second'],
+            tzinfo=datetime.timezone.utc,
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+    if dt.year < 2020:
+        return None  # RTC not synchronized
+    return int(dt.timestamp())
 
 
 # ---------------------------------------------------------------------------

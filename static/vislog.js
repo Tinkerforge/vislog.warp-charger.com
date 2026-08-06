@@ -203,6 +203,7 @@ const CHART_COLORS = [
  * @param {Function}      [cfg.xTickCallback]    - custom x-axis tick callback
  * @param {Function}      [cfg.tooltipTitleCallback] - custom tooltip title callback
  * @param {number}        [cfg.xMaxTicksLimit]   - max x-axis tick count
+ * @param {string}        [cfg.xTitle]           - x-axis title text
  * @param {string}        [cfg.yTitle]           - y-axis title text
  * @param {string}        [cfg.zoomXKey]         - URL hash key for x-axis zoom (enables zoom persistence)
  * @param {string}        [cfg.zoomYKey]         - URL hash key for y-axis zoom
@@ -235,6 +236,15 @@ function _createTimeSeriesChart(cfg) {
     const xTicks = { color: textColor };
     if (cfg.xTickCallback) xTicks.callback = cfg.xTickCallback;
     if (cfg.xMaxTicksLimit) xTicks.maxTicksLimit = cfg.xMaxTicksLimit;
+
+    const xScale = {
+        display: true,
+        ticks: xTicks,
+        grid: { color: gridColor }
+    };
+    if (cfg.xTitle) {
+        xScale.title = { display: true, text: cfg.xTitle, color: textColor };
+    }
 
     const tooltipCallbacks = {};
     if (cfg.tooltipTitleCallback) {
@@ -291,11 +301,7 @@ function _createTimeSeriesChart(cfg) {
                 }
             },
             scales: {
-                x: {
-                    display: true,
-                    ticks: xTicks,
-                    grid: { color: gridColor }
-                },
+                x: xScale,
                 y: yScale
             }
         }
@@ -1191,6 +1197,7 @@ function renderMetersCharts() {
             prevChart: metersHistoryChart,
             section: metersData.history,
             intervalSeconds: METERS_HISTORY_INTERVAL_S,
+            reportTime: metersData.report_time,
             zoomXKey: 'mhzx',
             zoomYKey: 'mhzy',
         });
@@ -1203,13 +1210,14 @@ function renderMetersCharts() {
             prevChart: metersLiveChart,
             section: metersData.live,
             intervalSeconds: 1 / (sps > 0 ? sps : METERS_LIVE_FALLBACK_SPS),
+            reportTime: metersData.report_time,
             zoomXKey: 'mlzx',
             zoomYKey: 'mlzy',
         });
     }
 }
 
-// Format elapsed seconds as "H:MM:SS" / "M:SS".
+// Format relative seconds as "[-]H:MM:SS" / "[-]M:SS".
 function _formatMetersRelTime(seconds, withDecimals) {
     const sign = seconds < 0 ? '-' : '';
     let s = Math.abs(seconds);
@@ -1222,13 +1230,23 @@ function _formatMetersRelTime(seconds, withDecimals) {
     return `${sign}${m}:${padSec}`;
 }
 
+// Format a UTC epoch as "HH:MM:SS" (withDate: "DD.MM. HH:MM:SS").
+function _formatMetersAbsTime(epochSeconds, withDate, withDecimals) {
+    const d = new Date(epochSeconds * 1000);
+    const pad = v => String(v).padStart(2, '0');
+    let s = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+    if (withDecimals) s += '.' + Math.floor(d.getUTCMilliseconds() / 100);
+    if (withDate) s = `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}. ${s}`;
+    return s;
+}
+
 function _renderMetersChart(cfg) {
     const slots = cfg.section.slots;
     // All slot sample arrays have the same length; use the longest to be safe
     const totalCount = Math.max(...slots.map(s => s.samples.length));
 
-    // Trim leading samples where no slot has seen a value yet, so the time
-    // axis starts at 0 at the first available data point.
+    // Trim leading samples where no slot has seen a value yet, so the chart
+    // starts at the first available data point.
     let firstIdx = 0;
     while (firstIdx < totalCount &&
            !slots.some(s => s.samples[firstIdx] != null)) {
@@ -1237,8 +1255,24 @@ function _renderMetersChart(cfg) {
     if (firstIdx >= totalCount) firstIdx = 0;  // all samples null
     const sampleCount = totalCount - firstIdx;
 
-    // Elapsed time since the first available sample
-    const sampleTime = i => i * cfg.intervalSeconds;
+    // Age of the i-th (trimmed) sample relative to report creation: the
+    // newest (last) sample is 'offset' ms old, earlier samples are one
+    // interval apart each.
+    const offsetSeconds = (cfg.section.offset || 0) / 1000;
+    const sampleAge = i =>
+        offsetSeconds + (sampleCount - 1 - i) * cfg.intervalSeconds;
+
+    // With a valid report creation time (from rtc/time, UTC) the x-axis
+    // shows absolute UTC times; otherwise negative time before the report.
+    const absolute = cfg.reportTime != null;
+    // Include the date in absolute tick labels if the data spans > 24h
+    const withDate = sampleCount * cfg.intervalSeconds > 24 * 3600;
+    // Sub-minute sample spacing (live data): show tooltip time with decimals
+    const withDecimals = cfg.intervalSeconds < 60;
+
+    const formatTime = (i, decimals) => absolute
+        ? _formatMetersAbsTime(cfg.reportTime - sampleAge(i), withDate, decimals)
+        : _formatMetersRelTime(-sampleAge(i), decimals);
 
     const labels = [];
     for (let i = 0; i < sampleCount; i++) {
@@ -1254,9 +1288,6 @@ function _renderMetersChart(cfg) {
         return ds;
     });
 
-    // Sub-minute sample spacing (live data): show tooltip time with decimals
-    const withDecimals = cfg.intervalSeconds < 60;
-
     return _createTimeSeriesChart({
         canvasId: cfg.canvasId,
         prevChart: cfg.prevChart,
@@ -1264,16 +1295,20 @@ function _renderMetersChart(cfg) {
         datasets: datasets,
         useLog: false,
         xMaxTicksLimit: 15,
+        xTitle: absolute
+            ? (T.meters_time_axis_utc || 'Time (UTC)')
+            : (T.meters_time_axis_rel || 'Time before report creation'),
         yTitle: T.meters_power_axis || 'Power [W]',
         zoomXKey: cfg.zoomXKey,
         zoomYKey: cfg.zoomYKey,
         xTickCallback: function(value) {
-            return _formatMetersRelTime(sampleTime(value), false);
+            return formatTime(value, false);
         },
         tooltipTitleCallback: function(items) {
             if (!items.length) return '';
             const idx = items[0].dataIndex;
-            return _formatMetersRelTime(sampleTime(idx), withDecimals)
+            return formatTime(idx, withDecimals)
+                + (absolute ? ' UTC' : '')
                 + ' (' + (T.meters_sample_axis || 'Sample') + ' ' + (firstIdx + idx) + ')';
         },
     });
