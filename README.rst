@@ -3,10 +3,10 @@ vislog.warp-charger.com
 
 Microservice for sharing and visualizing WARP charging protocol.
 
-Optional dependency: ``tshark`` (Wireshark 4.x) is used to show a
-human-readable dissection of the ``iso15118_ll`` trace section in debug
-reports. Without it, the section is shown as a hex dump and the pcap
-download still works.
+Optional dependency: ``tshark`` (Wireshark >= 4.2)
+is used to show a human-readable dissection of the ``iso15118_ll`` trace
+section in debug reports. Without it, the section is shown as a hex dump
+and the pcap download still works.
 
 For decoding of the EXI-encoded V2G messages the
 `dsV2Gshark <https://github.com/dspace-group/dsV2Gshark>`_
