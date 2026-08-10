@@ -606,3 +606,105 @@ footer a:hover {
     height: 40vh;
   }
 }
+
+/* --------------------------------------------------------------------------
+   ISO 15118 packet list (Wireshark-style)
+   -------------------------------------------------------------------------- */
+.iso15118-filter {
+  max-width: 22rem;
+}
+
+.iso15118-packet-list {
+  max-height: 75vh;
+  overflow: auto;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+}
+
+.iso15118-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.iso15118-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bs-tertiary-bg);
+  border-bottom: 1px solid var(--bs-border-color);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+  font-weight: 600;
+}
+
+.iso15118-table td {
+  padding: 0.1rem 0.5rem;
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+.iso15118-table tbody tr[data-idx] {
+  cursor: pointer;
+}
+
+.iso15118-col-no,
+.iso15118-col-len {
+  text-align: right;
+}
+
+.iso15118-col-info {
+  max-width: 40rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Wireshark-like protocol row coloring */
+.iso15118-proto-hpav   { background: rgba(160, 120, 255, 0.14); }
+.iso15118-proto-v2g    { background: rgba( 60, 200, 120, 0.14); }
+.iso15118-proto-tls    { background: rgba(230, 180,  60, 0.16); }
+.iso15118-proto-icmpv6 { background: rgba(240, 110, 170, 0.13); }
+.iso15118-proto-tcp    { background: rgba(140, 160, 180, 0.12); }
+.iso15118-proto-udp    { background: rgba( 90, 170, 240, 0.13); }
+
+.iso15118-table tbody tr[data-idx]:hover {
+  background: rgba(130, 140, 150, 0.25);
+}
+
+.iso15118-table tbody tr.iso15118-selected {
+  background: var(--bs-primary-bg-subtle);
+  outline: 1px solid var(--bs-primary-border-subtle);
+}
+
+/* Packet detail (protocol tree) */
+.iso15118-detail-row > td {
+  background: var(--bs-secondary-bg);
+  padding: 0.5rem 0.75rem;
+  white-space: normal;
+}
+
+.iso15118-tree {
+  font-family: var(--bs-font-monospace);
+  font-size: 0.78rem;
+}
+
+.iso15118-tree .iso15118-tree {
+  padding-left: 1.25rem;
+}
+
+.iso15118-tree summary {
+  cursor: pointer;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.iso15118-tree summary:hover {
+  background: rgba(130, 140, 150, 0.2);
+}
+
+.iso15118-leaf {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-left: 1.05rem;
+}

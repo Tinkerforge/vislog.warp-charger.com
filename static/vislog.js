@@ -937,6 +937,11 @@ function vislog_report(data) {
         }
     }
 
+    // Initialize the Wireshark-style iso15118_ll packet list (lazy fetch)
+    if (data.iso15118_ll_available) {
+        initIso15118PacketList();
+    }
+
     // Initialize charge manager chart if parsed data is available
     if (data.cm_parsed) {
         initCmChart(data.cm_parsed);
@@ -949,6 +954,175 @@ function vislog_report(data) {
 
     // Coredump is now rendered server-side, no JS needed
 }
+
+// ---------------------------------------------------------------------------
+// ISO 15118 low-level trace: Wireshark-style packet list
+// ---------------------------------------------------------------------------
+// Packet format (from /<lang>/<uuid>/iso15118.json):
+//   [number, epoch_time, src, dst, protocol, length, info, tree]
+// where tree is a nested list of Wireshark detail labels:
+//   node := "leaf label" | [label, [node, ...]]
+let iso15118Packets = null;
+let iso15118HasBootEpoch = false;
+let iso15118SelectedRow = null;
+let iso15118DetailRow = null;
+
+function initIso15118PacketList() {
+    const statusEl = document.getElementById('iso15118-status');
+    const listEl = document.getElementById('iso15118-packet-list');
+    if (!statusEl || !listEl) return;
+
+    const url = location.pathname.replace(/\/+$/, '') + '/iso15118.json';
+    fetch(url)
+        .then(r => {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(d => {
+            iso15118Packets = d.packets;
+            iso15118HasBootEpoch = d.has_boot_epoch;
+            statusEl.classList.add('d-none');
+            listEl.classList.remove('d-none');
+
+            const filterEl = document.getElementById('iso15118-filter');
+            filterEl.disabled = false;
+            filterEl.addEventListener('input', () => renderIso15118Rows(filterEl.value));
+
+            document.getElementById('iso15118-tbody').addEventListener('click', ev => {
+                const row = ev.target.closest('tr[data-idx]');
+                if (row) toggleIso15118Detail(row);
+            });
+
+            renderIso15118Rows('');
+        })
+        .catch(e => {
+            console.error('iso15118 packet list failed:', e);
+            statusEl.textContent = T.iso15118_load_failed;
+        });
+}
+
+function iso15118FormatTime(epoch) {
+    if (iso15118HasBootEpoch) {
+        // Absolute UTC time (matching the trace/event log timestamps)
+        return new Date(epoch * 1000).toISOString().substring(11, 23);
+    }
+    // No RTC reference: epoch equals the uptime
+    const ms = Math.round(epoch * 1000);
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:` +
+           `${String(s).padStart(2, '0')}.${String(ms % 1000).padStart(3, '0')}`;
+}
+
+function iso15118ProtoClass(proto) {
+    if (proto.startsWith('HomePlug')) return 'iso15118-proto-hpav';
+    if (proto.startsWith('V2G')) return 'iso15118-proto-v2g';
+    if (proto.startsWith('TLS') || proto.startsWith('SSL')) return 'iso15118-proto-tls';
+    if (proto === 'ICMPv6') return 'iso15118-proto-icmpv6';
+    if (proto === 'TCP') return 'iso15118-proto-tcp';
+    if (proto === 'UDP' || proto === 'MDNS' || proto === 'DHCPv6') return 'iso15118-proto-udp';
+    return '';
+}
+
+function renderIso15118Rows(filter) {
+    const tbody = document.getElementById('iso15118-tbody');
+    tbody.textContent = '';
+    iso15118SelectedRow = null;
+    iso15118DetailRow = null;
+
+    const needle = filter.trim().toLowerCase();
+    const frag = document.createDocumentFragment();
+    let shown = 0;
+
+    iso15118Packets.forEach((pkt, idx) => {
+        const [no, epoch, src, dst, proto, len, info] = pkt;
+        if (needle) {
+            const haystack = `${no} ${src} ${dst} ${proto} ${info}`.toLowerCase();
+            if (!haystack.includes(needle)) return;
+        }
+        shown++;
+
+        const row = document.createElement('tr');
+        row.dataset.idx = idx;
+        const cls = iso15118ProtoClass(proto);
+        if (cls) row.className = cls;
+
+        for (const [text, tdCls] of [[no, 'iso15118-col-no'], [iso15118FormatTime(epoch), 'iso15118-col-time'],
+                                     [src, 'iso15118-col-addr'], [dst, 'iso15118-col-addr'],
+                                     [proto, 'iso15118-col-proto'], [len, 'iso15118-col-len'],
+                                     [info, 'iso15118-col-info']]) {
+            const td = document.createElement('td');
+            td.className = tdCls;
+            td.textContent = text;
+            row.appendChild(td);
+        }
+        frag.appendChild(row);
+    });
+
+    tbody.appendChild(frag);
+
+    const countEl = document.getElementById('iso15118-count');
+    countEl.textContent = needle
+        ? `${shown} / ${iso15118Packets.length}`
+        : `${iso15118Packets.length}`;
+}
+
+function toggleIso15118Detail(row) {
+    const wasSelected = (iso15118SelectedRow === row);
+
+    if (iso15118DetailRow) {
+        iso15118DetailRow.remove();
+        iso15118DetailRow = null;
+    }
+    if (iso15118SelectedRow) {
+        iso15118SelectedRow.classList.remove('iso15118-selected');
+        iso15118SelectedRow = null;
+    }
+    if (wasSelected) return;  // second click on the same row just collapses
+
+    const pkt = iso15118Packets[parseInt(row.dataset.idx, 10)];
+
+    const detailRow = document.createElement('tr');
+    detailRow.className = 'iso15118-detail-row';
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.appendChild(renderIso15118Tree(pkt[7], true, false));
+    detailRow.appendChild(td);
+    row.after(detailRow);
+
+    row.classList.add('iso15118-selected');
+    iso15118SelectedRow = row;
+    iso15118DetailRow = detailRow;
+}
+
+function renderIso15118Tree(nodes, topLevel, openAll) {
+    const container = document.createElement('div');
+    container.className = 'iso15118-tree';
+
+    nodes.forEach((node, idx) => {
+        if (Array.isArray(node)) {
+            const details = document.createElement('details');
+            // Expand the topmost protocol layer (usually the interesting
+            // one: V2G Message, HomePlug AV, ...) including all subtrees
+            const open = openAll || (topLevel && idx === nodes.length - 1);
+            if (open) details.open = true;
+            const summary = document.createElement('summary');
+            summary.textContent = node[0];
+            details.appendChild(summary);
+            details.appendChild(renderIso15118Tree(node[1], false, open));
+            container.appendChild(details);
+        } else {
+            const leaf = document.createElement('div');
+            leaf.className = 'iso15118-leaf';
+            leaf.textContent = node;
+            container.appendChild(leaf);
+        }
+    });
+
+    return container;
+}
+
 
 // ---------------------------------------------------------------------------
 // Charge Manager Chart
