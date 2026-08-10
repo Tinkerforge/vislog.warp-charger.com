@@ -1421,6 +1421,15 @@ def _run_tshark(pcap_bytes, extra_args):
 # several kB per field, which needlessly bloats the JSON payload).
 ISO15118_MAX_LABEL_LEN = 1500
 
+# Column field variants for the packet-list pass, in order of preference:
+# lowercase canonical names (Wireshark >= 4.2) and title-based names
+# (Wireshark <= 4.0, still accepted by 4.2+ for backwards compatibility).
+# The first working variant is moved to the front at runtime.
+_ISO15118_COLUMN_FIELDS = [
+    ['_ws.col.def_src', '_ws.col.def_dst', '_ws.col.protocol', '_ws.col.info'],
+    ['_ws.col.Source', '_ws.col.Destination', '_ws.col.Protocol', '_ws.col.Info'],
+]
+
 
 def _pdml_node(el):
     """Convert a PDML <field>/<proto> element to a compact tree node.
@@ -1460,13 +1469,26 @@ def dissect_iso15118_pcap(pcap_bytes):
         print("Warning: tshark not found, cannot dissect iso15118_ll trace")
         return None
 
-    # Pass 1: packet list columns (same columns as the Wireshark packet list)
-    fields_out = _run_tshark(pcap_bytes, [
-        '-T', 'fields', '-E', 'separator=/t',
-        '-e', 'frame.number', '-e', 'frame.time_epoch',
-        '-e', '_ws.col.def_src', '-e', '_ws.col.def_dst',
-        '-e', '_ws.col.protocol', '-e', 'frame.len', '-e', '_ws.col.info',
-    ])
+    # Pass 1: packet list columns (same columns as the Wireshark packet list).
+    # The lowercase column field names (_ws.col.def_src, ...) were introduced
+    # in Wireshark 4.2; older versions only support the title-based names
+    # (_ws.col.Source, ...), which 4.2+ still accepts for backwards
+    # compatibility. Try each variant and remember the one that works.
+    fields_out = None
+    for variant in _ISO15118_COLUMN_FIELDS:
+        col_src, col_dst, col_proto, col_info = variant
+        fields_out = _run_tshark(pcap_bytes, [
+            '-T', 'fields', '-E', 'separator=/t',
+            '-e', 'frame.number', '-e', 'frame.time_epoch',
+            '-e', col_src, '-e', col_dst,
+            '-e', col_proto, '-e', 'frame.len', '-e', col_info,
+        ])
+        if fields_out is not None:
+            # Move the working variant to the front for subsequent calls
+            if variant is not _ISO15118_COLUMN_FIELDS[0]:
+                _ISO15118_COLUMN_FIELDS.remove(variant)
+                _ISO15118_COLUMN_FIELDS.insert(0, variant)
+            break
     if fields_out is None:
         return None
 
