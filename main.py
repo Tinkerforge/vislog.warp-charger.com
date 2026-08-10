@@ -508,8 +508,8 @@ def iso15118_packets_json(lang, uuid):
     """
     if not UUID_PATTERN.match(uuid):
         abort(404)
-    # v3: last three MAC octets censored
-    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v3.json.gz')
+    # v4: column extraction fixed for tshark <= 4.0
+    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v4.json.gz')
 
     gz_payload = None
     if os.path.exists(cache_path):
@@ -1431,6 +1431,24 @@ _ISO15118_COLUMN_FIELDS = [
 ]
 
 
+def _parse_iso15118_summaries(fields_out):
+    """Parse tshark -T fields output (7 tab-separated columns) into a dict
+    {frame_number: [number, epoch, src, dst, protocol, length, info]}."""
+    summaries = {}
+    for line in fields_out.decode('utf-8', errors='replace').splitlines():
+        parts = line.split('\t')
+        if len(parts) != 7:
+            continue
+        try:
+            number = int(parts[0])
+            epoch = float(parts[1])
+            length = int(parts[5])
+        except ValueError:
+            continue
+        summaries[number] = [number, epoch, parts[2], parts[3], parts[4], length, parts[6]]
+    return summaries
+
+
 def _pdml_node(el):
     """Convert a PDML <field>/<proto> element to a compact tree node.
 
@@ -1473,8 +1491,10 @@ def dissect_iso15118_pcap(pcap_bytes):
     # The lowercase column field names (_ws.col.def_src, ...) were introduced
     # in Wireshark 4.2; older versions only support the title-based names
     # (_ws.col.Source, ...), which 4.2+ still accepts for backwards
-    # compatibility. Try each variant and remember the one that works.
-    fields_out = None
+    # compatibility. Old tshark does not reject unknown _ws.col.* names, it
+    # silently prints empty columns, so a variant only counts as working if
+    # it actually produced column text. The working variant is remembered.
+    summaries = None
     for variant in _ISO15118_COLUMN_FIELDS:
         col_src, col_dst, col_proto, col_info = variant
         fields_out = _run_tshark(pcap_bytes, [
@@ -1483,27 +1503,25 @@ def dissect_iso15118_pcap(pcap_bytes):
             '-e', col_src, '-e', col_dst,
             '-e', col_proto, '-e', 'frame.len', '-e', col_info,
         ])
-        if fields_out is not None:
+        if fields_out is None:
+            continue
+
+        parsed = _parse_iso15118_summaries(fields_out)
+        if summaries is None:
+            summaries = parsed  # degraded last resort if no variant validates
+
+        # The protocol column is never empty for a real packet
+        if parsed and any(entry[4] for entry in parsed.values()):
+            summaries = parsed
             # Move the working variant to the front for subsequent calls
             if variant is not _ISO15118_COLUMN_FIELDS[0]:
                 _ISO15118_COLUMN_FIELDS.remove(variant)
                 _ISO15118_COLUMN_FIELDS.insert(0, variant)
             break
-    if fields_out is None:
-        return None
+        print(f"Warning: tshark produced no column text for fields {variant}")
 
-    summaries = {}
-    for line in fields_out.decode('utf-8', errors='replace').splitlines():
-        parts = line.split('\t')
-        if len(parts) != 7:
-            continue
-        try:
-            number = int(parts[0])
-            epoch = float(parts[1])
-            length = int(parts[5])
-        except ValueError:
-            continue
-        summaries[number] = [number, epoch, parts[2], parts[3], parts[4], length, parts[6]]
+    if summaries is None:
+        return None
 
     # Pass 2: protocol detail tree (PDML contains the exact strings Wireshark
     # shows in its packet detail pane)
