@@ -44,3 +44,6 @@ fi
 if [ "$NEEDS_RESTART" = "1" ]; then
     /usr/bin/systemctl restart vislog.warp-charger.com
 fi
+
+# --- Delete protocols older than 1 year ---
+su -s /bin/sh vislog -c "/home/vislog/vislog.warp-charger.com/cleanup_protocols.sh"
