@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import gzip
 import xml.etree.ElementTree as ET
+import zoneinfo
 from io import BytesIO
 from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 
@@ -468,7 +469,9 @@ def _load_iso15118_pcap(lang, uuid):
     """Shared request handling for the iso15118 endpoints.
 
     Validates the request, reads the protocol file and builds the pcap.
-    Returns (pcap_bytes, has_boot_epoch); aborts with 404 on any problem.
+    Returns (pcap_bytes, has_boot_epoch, tz_offset); aborts with 404 on any
+    problem. tz_offset is the charger's UTC offset in seconds (None if
+    unknown), used to display packet times in the charger's local time.
     """
     if lang not in SUPPORTED_LANGUAGES:
         abort(404)
@@ -483,19 +486,26 @@ def _load_iso15118_pcap(lang, uuid):
         content = fh.read()
 
     try:
-        pcap_bytes, has_boot_epoch = extract_iso15118_pcap(content)
+        pcap_bytes, boot_epoch = extract_iso15118_pcap(content)
     except Exception as e:
         print(f"Warning: Failed to convert iso15118_ll trace to pcap: {e}")
-        pcap_bytes, has_boot_epoch = None, False
+        pcap_bytes, boot_epoch = None, 0
 
     if pcap_bytes is None:
         abort(404)
 
-    return pcap_bytes, has_boot_epoch
+    tz_offset = None
+    if boot_epoch:
+        try:
+            tz_offset = _extract_content_tz_offset(content, boot_epoch)
+        except Exception as e:
+            print(f"Warning: Failed to determine report timezone: {e}")
+
+    return pcap_bytes, boot_epoch != 0, tz_offset
 
 @app.route('/<lang>/<uuid>/iso15118.pcap')
 def download_iso15118_pcap(lang, uuid):
-    pcap_bytes, _ = _load_iso15118_pcap(lang, uuid)
+    pcap_bytes, _, _ = _load_iso15118_pcap(lang, uuid)
     return Response(pcap_bytes, mimetype='application/vnd.tcpdump.pcap',
                     headers={'Content-Disposition': f'attachment; filename={uuid}-iso15118.pcap'})
 
@@ -508,9 +518,9 @@ def iso15118_packets_json(lang, uuid):
     """
     if not UUID_PATTERN.match(uuid):
         abort(404)
-    # v5: dissected with Wireshark >= 4.2 (older caches may lack
-    # HomePlug AV/EXI decoding from tshark 4.0)
-    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v5.json.gz')
+    # v6: adds tz_offset (charger-local time display); v5: dissected with
+    # Wireshark >= 4.2 (older caches may lack HomePlug AV/EXI decoding)
+    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v6.json.gz')
 
     gz_payload = None
     if os.path.exists(cache_path):
@@ -521,7 +531,7 @@ def iso15118_packets_json(lang, uuid):
             gz_payload = None
 
     if gz_payload is None:
-        pcap_bytes, has_boot_epoch = _load_iso15118_pcap(lang, uuid)
+        pcap_bytes, has_boot_epoch, tz_offset = _load_iso15118_pcap(lang, uuid)
 
         if TSHARK_PATH is None:
             return {'error': 'tshark-unavailable'}, 503
@@ -537,6 +547,7 @@ def iso15118_packets_json(lang, uuid):
 
         payload = json.dumps({
             'has_boot_epoch': has_boot_epoch,
+            'tz_offset': tz_offset,
             'packets': packets,
         }, separators=(',', ':'))
         gz_payload = gzip.compress(payload.encode('utf-8'))
@@ -1010,8 +1021,11 @@ def parse_meters(report_json):
     Returns a dict {'history': {...}, 'live': {...}, 'report_time': ...}
     where each section is {'offset': ms, 'samples_per_second': float|None,
     'slots': [...]} with one slot entry per configured meter ({'slot': N,
-    'name': str, 'samples': [...]}), and 'report_time' is the report's
-    creation time as UTC epoch seconds (from rtc/time, None if unknown).
+    'name': str, 'samples': [...]}), 'report_time' is the report's
+    creation time as UTC epoch seconds (from rtc/time, None if unknown) and
+    'tz_offset' is the charger's UTC offset in seconds at that time (from
+    the ntp/config timezone, None if unknown), used to display the x-axis
+    in the charger's local time.
     Returns None if neither section contains data.
     """
     def slot_name(slot):
@@ -1050,8 +1064,12 @@ def parse_meters(report_json):
             }
 
     if result:
-        # Absolute time reference (UTC epoch seconds) for the x-axis
+        # Absolute time reference (UTC epoch seconds) for the x-axis, plus
+        # the charger's UTC offset to display it in the charger's local time
         result['report_time'] = _report_timestamp(report_json)
+        result['tz_offset'] = None
+        if result['report_time'] is not None:
+            result['tz_offset'] = _report_tz_offset(report_json, result['report_time'])
 
     return result if result else None
 
@@ -1076,6 +1094,32 @@ def _report_timestamp(report_json):
     if dt.year < 2020:
         return None  # RTC not synchronized
     return int(dt.timestamp())
+
+
+def _tz_offset_seconds(timezone_name, epoch):
+    """UTC offset (in seconds) of the given IANA timezone at the given epoch.
+
+    Returns None if the timezone is unknown/invalid. Used to convert the
+    UTC-based rtc/time reference to the charger's local time, so displayed
+    times match the (local-time) event log and trace timestamps.
+    """
+    if not timezone_name:
+        return None
+    try:
+        tz = zoneinfo.ZoneInfo(timezone_name)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        return None
+    offset = datetime.datetime.fromtimestamp(epoch, tz).utcoffset()
+    return int(offset.total_seconds())
+
+
+def _report_tz_offset(report_json, epoch):
+    """UTC offset (seconds) of the charger's configured timezone (ntp/config)
+    at the given epoch, or None if unavailable."""
+    ntp = report_json.get('ntp/config')
+    if not isinstance(ntp, dict):
+        return None
+    return _tz_offset_seconds(ntp.get('timezone'), epoch)
 
 
 # ---------------------------------------------------------------------------
@@ -1545,12 +1589,13 @@ def dissect_iso15118_pcap(pcap_bytes):
 def extract_iso15118_pcap(content):
     """Extract the iso15118_ll section from raw report text and build a pcap.
 
-    Returns (pcap_bytes, has_boot_epoch) or (None, False) if the report
-    contains no usable iso15118_ll trace data.
+    Returns (pcap_bytes, boot_epoch) or (None, 0) if the report
+    contains no usable iso15118_ll trace data. boot_epoch is the UTC epoch
+    of the charger's boot (0 if the RTC was never synchronized).
     """
     m = re.search(r'__begin_iso15118_ll__(.*?)__end_iso15118_ll__', content, re.DOTALL)
     if not m:
-        return None, False
+        return None, 0
 
     # Determine the boot epoch from the raw report text (first "uptime" key
     # and rtc/time), mirroring the offline debug_report_to_pcap.py converter.
@@ -1569,7 +1614,25 @@ def extract_iso15118_pcap(content):
             pass
 
     pcap_bytes = iso15118_ll_to_pcap(m.group(1), boot_epoch)
-    return pcap_bytes, boot_epoch != 0
+    return pcap_bytes, boot_epoch
+
+
+def _extract_content_tz_offset(content, epoch):
+    """UTC offset (seconds) of the charger's timezone from raw report text.
+
+    Parses the ntp/config line for the IANA timezone name; returns None if
+    unavailable. Used to display iso15118 packet times in the charger's
+    local time (matching the event log), while the pcap itself keeps true
+    UTC epochs.
+    """
+    ntp_m = re.search(r'"ntp/config":\s*(\{[^}]+\})', content)
+    if not ntp_m:
+        return None
+    try:
+        ntp = json.loads(ntp_m.group(1))
+    except json.JSONDecodeError:
+        return None
+    return _tz_offset_seconds(ntp.get('timezone'), epoch)
 
 
 def handle_report(data, lang, t):

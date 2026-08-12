@@ -964,6 +964,7 @@ function vislog_report(data) {
 //   node := "leaf label" | [label, [node, ...]]
 let iso15118Packets = null;
 let iso15118HasBootEpoch = false;
+let iso15118TzOffset = 0;  // charger's UTC offset in seconds
 let iso15118SelectedRow = null;
 let iso15118DetailRow = null;
 
@@ -981,6 +982,7 @@ function initIso15118PacketList() {
         .then(d => {
             iso15118Packets = d.packets;
             iso15118HasBootEpoch = d.has_boot_epoch;
+            iso15118TzOffset = d.tz_offset || 0;
             statusEl.classList.add('d-none');
             listEl.classList.remove('d-none');
 
@@ -1003,8 +1005,10 @@ function initIso15118PacketList() {
 
 function iso15118FormatTime(epoch) {
     if (iso15118HasBootEpoch) {
-        // Absolute UTC time (matching the trace/event log timestamps)
-        return new Date(epoch * 1000).toISOString().substring(11, 23);
+        // Absolute time in the charger's timezone (matching the trace/event
+        // log timestamps, which are in local time). Falls back to UTC if the
+        // charger's timezone is unknown (tz_offset = 0).
+        return new Date((epoch + iso15118TzOffset) * 1000).toISOString().substring(11, 23);
     }
     // No RTC reference: epoch equals the uptime
     const ms = Math.round(epoch * 1000);
@@ -1372,6 +1376,7 @@ function renderMetersCharts() {
             section: metersData.history,
             intervalSeconds: METERS_HISTORY_INTERVAL_S,
             reportTime: metersData.report_time,
+            tzOffset: metersData.tz_offset,
             zoomXKey: 'mhzx',
             zoomYKey: 'mhzy',
         });
@@ -1385,6 +1390,7 @@ function renderMetersCharts() {
             section: metersData.live,
             intervalSeconds: 1 / (sps > 0 ? sps : METERS_LIVE_FALLBACK_SPS),
             reportTime: metersData.report_time,
+            tzOffset: metersData.tz_offset,
             zoomXKey: 'mlzx',
             zoomYKey: 'mlzy',
         });
@@ -1404,7 +1410,8 @@ function _formatMetersRelTime(seconds, withDecimals) {
     return `${sign}${m}:${padSec}`;
 }
 
-// Format a UTC epoch as "HH:MM:SS" (withDate: "DD.MM. HH:MM:SS").
+// Format an epoch as "HH:MM:SS" (withDate: "DD.MM. HH:MM:SS"). The epoch is
+// expected to be pre-shifted into the desired timezone (UTC getters).
 function _formatMetersAbsTime(epochSeconds, withDate, withDecimals) {
     const d = new Date(epochSeconds * 1000);
     const pad = v => String(v).padStart(2, '0');
@@ -1437,15 +1444,20 @@ function _renderMetersChart(cfg) {
         offsetSeconds + (sampleCount - 1 - i) * cfg.intervalSeconds;
 
     // With a valid report creation time (from rtc/time, UTC) the x-axis
-    // shows absolute UTC times; otherwise negative time before the report.
+    // shows absolute times in the charger's timezone (matching the local-time
+    // event log; UTC fallback if the timezone is unknown); otherwise negative
+    // time before the report.
     const absolute = cfg.reportTime != null;
+    // Charger's UTC offset; null/undefined means unknown -> display UTC
+    const tzKnown = cfg.tzOffset != null;
+    const tzOffset = tzKnown ? cfg.tzOffset : 0;
     // Include the date in absolute tick labels if the data spans > 24h
     const withDate = sampleCount * cfg.intervalSeconds > 24 * 3600;
     // Sub-minute sample spacing (live data): show tooltip time with decimals
     const withDecimals = cfg.intervalSeconds < 60;
 
     const formatTime = (i, decimals) => absolute
-        ? _formatMetersAbsTime(cfg.reportTime - sampleAge(i), withDate, decimals)
+        ? _formatMetersAbsTime(cfg.reportTime + tzOffset - sampleAge(i), withDate, decimals)
         : _formatMetersRelTime(-sampleAge(i), decimals);
 
     const labels = [];
@@ -1470,7 +1482,8 @@ function _renderMetersChart(cfg) {
         useLog: false,
         xMaxTicksLimit: 15,
         xTitle: absolute
-            ? (T.meters_time_axis_utc || 'Time (UTC)')
+            ? (tzKnown ? (T.meters_time_axis_local || 'Time (local)')
+                       : (T.meters_time_axis_utc || 'Time (UTC)'))
             : (T.meters_time_axis_rel || 'Time before report creation'),
         yTitle: T.meters_power_axis || 'Power [W]',
         zoomXKey: cfg.zoomXKey,
@@ -1482,7 +1495,7 @@ function _renderMetersChart(cfg) {
             if (!items.length) return '';
             const idx = items[0].dataIndex;
             return formatTime(idx, withDecimals)
-                + (absolute ? ' UTC' : '')
+                + (absolute && !tzKnown ? ' UTC' : '')
                 + ' (' + (T.meters_sample_axis || 'Sample') + ' ' + (firstIdx + idx) + ')';
         },
     });
