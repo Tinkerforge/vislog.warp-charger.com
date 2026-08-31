@@ -36,40 +36,40 @@
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="config-tab" data-bs-toggle="tab" data-bs-target="#report-json" type="button" role="tab">
+            <a class="nav-link active" id="config-tab" href="#tab=config-tab" data-bs-toggle="tab" data-bs-target="#report-json" role="tab">
                 <i class="bi bi-gear"></i> {{ t.tab_configuration }}
-            </button>
+            </a>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="log-tab" data-bs-toggle="tab" data-bs-target="#report-log" type="button" role="tab">
+            <a class="nav-link" id="log-tab" href="#tab=log-tab" data-bs-toggle="tab" data-bs-target="#report-log" role="tab">
                 <i class="bi bi-journal-text"></i> {{ t.tab_event_log }}
-            </button>
+            </a>
         </li>
         {% if data.meters_parsed %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="meters-tab" data-bs-toggle="tab" data-bs-target="#report-meters" type="button" role="tab">
+            <a class="nav-link" id="meters-tab" href="#tab=meters-tab" data-bs-toggle="tab" data-bs-target="#report-meters" role="tab">
                 <i class="bi bi-graph-up"></i> {{ t.tab_meters }}
-            </button>
+            </a>
         </li>
         {% endif %}
         {% if data.report_trace %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" type="button" role="tab">
+            <a class="nav-link" id="trace-tab" href="#tab=trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" role="tab">
                 <i class="bi bi-bug"></i> {{ t.tab_trace_log }}
-            </button>
+            </a>
         </li>
         {% endif %}
         {% for module_name, module_content in data.trace_modules.items() %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" type="button" role="tab">
+            <a class="nav-link" id="trace-{{ module_name }}-tab" href="#tab=trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" role="tab">
                 <i class="bi bi-code-square"></i> {{ module_name }}
-            </button>
+            </a>
         </li>
         {% endfor %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" type="button" role="tab">
+            <a class="nav-link" id="dump-tab" href="#tab=dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" role="tab">
                 <i class="bi bi-file-binary"></i> {{ t.tab_coredump }}
-            </button>
+            </a>
         </li>
         <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
             <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">

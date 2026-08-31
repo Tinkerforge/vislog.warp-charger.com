@@ -76,6 +76,15 @@ function _hashSet(key, value) {
         params.set(key, value);
     }
     history.replaceState(null, '', '#' + params.toString());
+    _updateTabLinks();
+}
+
+function _updateTabLinks() {
+    document.querySelectorAll('.nav-tabs-vislog .nav-link[data-bs-target]').forEach(link => {
+        const params = _hashParams();
+        params.set('tab', link.id);
+        link.href = location.pathname + location.search + '#' + params.toString();
+    });
 }
 
 function _parseChartHash(colsKey, logKey) {
@@ -106,6 +115,7 @@ function _updateChartHash(checkboxSelector, logCheckboxId, colsKey, logKey) {
         params.delete(logKey);
     }
     history.replaceState(null, '', '#' + params.toString());
+    _updateTabLinks();
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +168,17 @@ document.addEventListener('shown.bs.tab', function(e) {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    _updateTabLinks();
+
+    document.querySelectorAll('.nav-tabs-vislog .nav-link[data-bs-target]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            bootstrap.Tab.getOrCreateInstance(link).show();
+        });
+    });
+
     const params = _hashParams();
     const tabId = params.get('tab');
     if (tabId) {

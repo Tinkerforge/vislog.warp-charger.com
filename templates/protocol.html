@@ -22,29 +22,29 @@
     <!-- Tabs -->
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="chart-tab" data-bs-toggle="tab" data-bs-target="#proto-chart-pane" type="button" role="tab">
+            <a class="nav-link active" id="chart-tab" href="#tab=chart-tab" data-bs-toggle="tab" data-bs-target="#proto-chart-pane" role="tab">
                 <i class="bi bi-graph-up"></i> {{ t.chart_title }}
-            </button>
+            </a>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" type="button" role="tab">
+            <a class="nav-link" id="before-json-tab" href="#tab=before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" role="tab">
                 <i class="bi bi-gear"></i> {{ t.tab_config_before }}
-            </button>
+            </a>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" type="button" role="tab">
+            <a class="nav-link" id="after-json-tab" href="#tab=after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" role="tab">
                 <i class="bi bi-gear"></i> {{ t.tab_config_after }}
-            </button>
+            </a>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" type="button" role="tab">
+            <a class="nav-link" id="before-log-tab" href="#tab=before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" role="tab">
                 <i class="bi bi-journal-text"></i> {{ t.tab_log_before }}
-            </button>
+            </a>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" type="button" role="tab">
+            <a class="nav-link" id="after-log-tab" href="#tab=after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" role="tab">
                 <i class="bi bi-journal-text"></i> {{ t.tab_log_after }}
-            </button>
+            </a>
         </li>
         <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
             <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
