@@ -22,7 +22,8 @@ import gzip
 import xml.etree.ElementTree as ET
 import zoneinfo
 from io import BytesIO
-from i18n import get_translations, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
+from i18n import get_translations, format_parse_warning, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
+from input_parser import parse_document
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
@@ -300,33 +301,9 @@ def get_chart_config(t):
     }]
 
 def read_and_preprocess_protocol(file_path):
-    """
-    Read a protocol file and preprocess it to handle truncated CSV data.
-
-    When the charge log gets too long, a message like
-    "105636 lines have been dropped from the following table."
-    is inserted before the CSV data. This function removes that message
-    and returns the number of dropped lines (if any).
-
-    Returns:
-        tuple: (data_blocks, dropped_lines_count)
-            - data_blocks: list of strings split by '\n\n'
-            - dropped_lines_count: int or None if no lines were dropped
-    """
-    with open(file_path, 'r') as fh:
-        content = fh.read()
-
-    # Check for "X lines have been dropped from the following table." message
-    dropped_lines_match = re.search(r'\n\n(\d+) lines have been dropped from the following table\.', content)
-    dropped_lines_count = None
-
-    if dropped_lines_match:
-        dropped_lines_count = int(dropped_lines_match.group(1))
-        # Remove the message from content
-        content = re.sub(r'\n\n\d+ lines have been dropped from the following table\.', '', content)
-
-    data = content.split('\n\n')
-    return data, dropped_lines_count
+    """Load a diagnostic document, including historical unmarked uploads."""
+    with open(file_path, 'r', encoding='utf-8-sig') as fh:
+        return parse_document(fh.read())
 
 def extract_real_timestamp(before_protocol_log, first_millis):
     if not before_protocol_log or first_millis is None:
@@ -438,18 +415,17 @@ def view_id(lang, uuid):
         abort(404)  # Return a 404 error if the protocol does not exist
 
     t = get_translations(lang)
-    data, dropped_lines_count = read_and_preprocess_protocol(file_path)
     try:
-        is_report = (len(data[0]) < 100) and ('Scroll down for event log!' in data[0])
-    except (IndexError, TypeError):
-        abort(400)
+        document = read_and_preprocess_protocol(file_path)
+    except (ValueError, UnicodeError) as e:
+        abort(400, description=str(e))
 
-    if is_report:
-        return handle_report(data, lang, t)
+    if not document['is_protocol']:
+        return handle_report(document, lang, t)
     else:
         # Old ?configuration= and ?selected= params are converted to hash
         # on the client side for backward compatibility.
-        return handle_protocol(data, lang, t, dropped_lines_count)
+        return handle_protocol(document, lang, t)
 
 # Legacy /chart route, redirect to base URL, client handles old params via hash
 @app.route('/<lang>/<uuid>/chart')
@@ -482,12 +458,11 @@ def _load_iso15118_pcap(lang, uuid):
     if not os.path.exists(file_path):
         abort(404)
 
-    with open(file_path, 'r') as fh:
-        content = fh.read()
-
     try:
-        pcap_bytes, boot_epoch = extract_iso15118_pcap(content)
-    except Exception as e:
+        document = read_and_preprocess_protocol(file_path)
+        _, snapshot = select_report_snapshot(document)
+        pcap_bytes, boot_epoch = extract_iso15118_pcap(snapshot)
+    except (ValueError, UnicodeError) as e:
         print(f"Warning: Failed to convert iso15118_ll trace to pcap: {e}")
         pcap_bytes, boot_epoch = None, 0
 
@@ -497,7 +472,7 @@ def _load_iso15118_pcap(lang, uuid):
     tz_offset = None
     if boot_epoch:
         try:
-            tz_offset = _extract_content_tz_offset(content, boot_epoch)
+            tz_offset = _tz_offset_seconds(snapshot['report_json'].get('ntp/config', {}).get('timezone'), boot_epoch)
         except Exception as e:
             print(f"Warning: Failed to determine report timezone: {e}")
 
@@ -516,11 +491,13 @@ def iso15118_packets_json(lang, uuid):
     The result only depends on the (immutable) uploaded protocol file, so it
     is cached gzip-compressed on disk next to the protocol file.
     """
-    if not UUID_PATTERN.match(uuid):
+    if lang not in SUPPORTED_LANGUAGES or not UUID_PATTERN.match(uuid):
         abort(404)
-    # v6: adds tz_offset (charger-local time display); v5: dissected with
-    # Wireshark >= 4.2 (older caches may lack HomePlug AV/EXI decoding)
-    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v6.json.gz')
+    snapshot = request.args.get('snapshot')
+    if snapshot not in (None, 'standalone', 'pre', 'post'):
+        abort(400)
+    # v7 isolates the selected snapshot and invalidates first-trace caches.
+    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v7.{snapshot or "default"}.json.gz')
 
     gz_payload = None
     if os.path.exists(cache_path):
@@ -1586,92 +1563,59 @@ def dissect_iso15118_pcap(pcap_bytes):
     return packets if packets else None
 
 
-def extract_iso15118_pcap(content):
-    """Extract the iso15118_ll section from raw report text and build a pcap.
+def extract_iso15118_pcap(snapshot):
+    """Build a pcap using one snapshot's trace and clock metadata.
 
     Returns (pcap_bytes, boot_epoch) or (None, 0) if the report
     contains no usable iso15118_ll trace data. boot_epoch is the UTC epoch
     of the charger's boot (0 if the RTC was never synchronized).
     """
-    m = re.search(r'__begin_iso15118_ll__(.*?)__end_iso15118_ll__', content, re.DOTALL)
-    if not m:
+    traces = re.findall(r'__begin_iso15118_ll__(.*?)__end_iso15118_ll__', snapshot['trace_log'], re.DOTALL)
+    if not traces:
         return None, 0
 
-    # Determine the boot epoch from the raw report text (first "uptime" key
-    # and rtc/time), mirroring the offline debug_report_to_pcap.py converter.
     boot_epoch = 0
-    uptime_m = re.search(r'"uptime":\s*(\d+)', content)
-    rtc_m = re.search(r'"rtc/time":\s*(\{[^}]+\})', content)
-    if uptime_m and rtc_m:
+    report = snapshot['report_json']
+    if 'uptime' in report and report.get('rtc/time'):
         try:
-            rtc = json.loads(rtc_m.group(1))
+            rtc = report['rtc/time']
             rtc_dt = datetime.datetime(rtc['year'], rtc['month'], rtc['day'],
                                        rtc['hour'], rtc['minute'], rtc['second'],
                                        tzinfo=datetime.timezone.utc)
             if rtc_dt.year >= 2020:
-                boot_epoch = rtc_dt.timestamp() - int(uptime_m.group(1)) / 1000.0
-        except (json.JSONDecodeError, KeyError, ValueError):
+                boot_epoch = rtc_dt.timestamp() - int(report['uptime']) / 1000.0
+        except (KeyError, ValueError, TypeError):
             pass
 
-    pcap_bytes = iso15118_ll_to_pcap(m.group(1), boot_epoch)
+    pcap_bytes = iso15118_ll_to_pcap('\n'.join(traces), boot_epoch)
     return pcap_bytes, boot_epoch
 
 
-def _extract_content_tz_offset(content, epoch):
-    """UTC offset (seconds) of the charger's timezone from raw report text.
-
-    Parses the ntp/config line for the IANA timezone name; returns None if
-    unavailable. Used to display iso15118 packet times in the charger's
-    local time (matching the event log), while the pcap itself keeps true
-    UTC epochs.
-    """
-    ntp_m = re.search(r'"ntp/config":\s*(\{[^}]+\})', content)
-    if not ntp_m:
-        return None
-    try:
-        ntp = json.loads(ntp_m.group(1))
-    except json.JSONDecodeError:
-        return None
-    return _tz_offset_seconds(ntp.get('timezone'), epoch)
+def select_report_snapshot(document):
+    snapshots = document['snapshots']
+    default = 'post' if 'post' in snapshots else 'pre' if 'pre' in snapshots else 'standalone'
+    selected = request.args.get('snapshot', default)
+    if selected not in ('standalone', 'pre', 'post'):
+        abort(400)
+    # Standalone debug reports have no before/after selection, even if the
+    # URL still carries one from viewing a charge protocol.
+    if not document['is_protocol']:
+        selected = 'standalone'
+    if selected not in snapshots:
+        abort(404)
+    return selected, snapshots[selected]
 
 
-def handle_report(data, lang, t):
-    try:
-        # Fix json syntax error that can happen in report
-        data_json     = data[1].replace('": ,', '": {},')
-        report_json   = json.loads(data_json)
-    except (IndexError, KeyError, json.JSONDecodeError, TypeError, ValueError):
-        report_json   = {}
-
-    try:
-        report_log    = data[2]
-    except (IndexError, KeyError):
-        report_log    = ""
-
-    inside_trace = False
-    report_trace_blocks = []
-    inside_dump = False
-    report_dump_blocks = []
-
-    for block in data[3:]:
-        if '___TRACE_LOG_START___' in block:
-            inside_trace = True
-        elif '___CORE_DUMP_START___' in block:
-            inside_trace = False
-            inside_dump = True
-        elif inside_trace:
-            report_trace_blocks.append(block)
-        elif inside_dump:
-            report_dump_blocks.append(block)
-
-    if len(report_dump_blocks) == 0:
-        report_dump_blocks.append('Es befindet sich kein Coredump im Debug-Report')
+def prepare_report(snapshot, lang):
+    report_json = snapshot['report_json']
+    report_log = snapshot['event_log']
+    full_trace = snapshot['trace_log']
+    report_dump_blocks = [snapshot['coredump'] or 'Es befindet sich kein Coredump im Debug-Report']
 
     # Parse module sections from trace log
     # Sections are delimited by __begin_MODULE__ and __end_MODULE__
     trace_modules = {}
     trace_remaining = []
-    full_trace = '\n\n'.join(report_trace_blocks)
 
     # Find all module sections using regex
     module_pattern = re.compile(r'__begin_(\w+)__(.*?)__end_\1__', re.DOTALL)
@@ -1687,7 +1631,10 @@ def handle_report(data, lang, t):
             trace_remaining.append(before_text)
 
         if module_content:
-            trace_modules[module_name] = module_content
+            if module_name in trace_modules:
+                trace_modules[module_name] += '\n' + module_content
+            else:
+                trace_modules[module_name] = module_content
 
         last_end = match.end()
 
@@ -1698,7 +1645,7 @@ def handle_report(data, lang, t):
 
     # If no modules found, use the full trace as remaining
     if not trace_modules and not trace_remaining:
-        if report_trace_blocks and report_trace_blocks[0] != 'Es befindet sich kein Trace-Log im Debug-Report':
+        if full_trace and full_trace != 'Es befindet sich kein Trace-Log im Debug-Report':
             trace_remaining = [full_trace]
 
     # Parse coredump for structured display
@@ -1739,7 +1686,7 @@ def handle_report(data, lang, t):
         print(f"Warning: Failed to check firmware version: {e}")
         firmware_check = None
 
-    data = {
+    return {
         'report_json':  report_json,
         'report_log':   report_log,
         'report_trace': '\n\n'.join(trace_remaining) if trace_remaining else '',
@@ -1752,16 +1699,12 @@ def handle_report(data, lang, t):
         'api_constants': api_constants[lang],
     }
 
-    # Render the protocol with syntax highlighting
+def handle_report(document, lang, t):
+    selected, snapshot = select_report_snapshot(document)
+    data = prepare_report(snapshot, lang)
+    data.update(snapshot=selected, report_snapshots=[], has_embedded_reports=False,
+                warnings=[format_parse_warning(w, lang) for w in document['warnings']])
     return render_template('report.html', data=data, t=t, lang=lang)
-
-def _get_block(data, idx, default, parse_json=False):
-    """Safely get a block from protocol data by index, with optional JSON parsing."""
-    try:
-        value = data[idx]
-        return json.loads(value) if parse_json else value
-    except (IndexError, KeyError, json.JSONDecodeError, TypeError, ValueError):
-        return default
 
 def _sanitize_for_json(values):
     """Replace NaN/inf values with None for JSON serialization."""
@@ -1770,6 +1713,8 @@ def _sanitize_for_json(values):
 _CSV_SECTION_HEADINGS = {
     'STATE', 'HARDWARE CONFIG', 'ENERGY METER', 'ENERGY METER ERRORS',
     'LL-State', 'ADC VALUES', 'VOLTAGES', 'RESISTANCES', 'GPIOs',
+    'HARDWARE_CONFIG', 'ENERGY_METER', 'ENERGY_METER_ERRORS', 'LL_STATE',
+    'ADC_VALUES', 'GPIOS', 'SLOTS',
 }
 
 def _disambiguate_csv_columns(protocol_csv):
@@ -1812,13 +1757,15 @@ def _disambiguate_csv_columns(protocol_csv):
     lines[0] = ','.join(new_headers)
     return '\n'.join(lines)
 
-def parse_protocol_data(data):
+def parse_protocol_data(document):
     # Parse protocol data and extract available columns
-    before_protocol_json = _get_block(data, 0, {}, parse_json=True)
-    before_protocol_log  = _get_block(data, 1, "")
-    protocol_csv         = _get_block(data, 2, "")
-    after_protocol_json  = _get_block(data, 3, {}, parse_json=True)
-    after_protocol_log   = _get_block(data, 4, "")
+    before = document['snapshots'].get('pre', {})
+    after = document['snapshots'].get('post', {})
+    before_protocol_json = before.get('report_json', {})
+    before_protocol_log = before.get('event_log', '')
+    protocol_csv = document['protocol_csv']
+    after_protocol_json = after.get('report_json', {})
+    after_protocol_log = after.get('event_log', '')
 
     try:
         # Disambiguate duplicate column names using section headings
@@ -1833,7 +1780,8 @@ def parse_protocol_data(data):
 
         # Convert millis to real timestamps
         millis = convert_millis_to_real_time(df['millis'].tolist(), timestamp_info)
-    except (KeyError, ValueError, TypeError, pd.errors.EmptyDataError):
+    except (KeyError, ValueError, TypeError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        document['warnings'].append('Could not parse the charge table.')
         millis = []
         df = None
         timestamp_info = None
@@ -1859,14 +1807,14 @@ def parse_protocol_data(data):
         'has_real_timestamps': timestamp_info is not None
     }
 
-def handle_protocol(data, lang, t, dropped_lines_count=None):
+def handle_protocol(document, lang, t):
     """Unified protocol handler: sends ALL column data + metadata to a single template.
 
     The client-side JS handles column selection, chart rendering, and URL hash
     persistence. Old ``?configuration=`` and ``?selected=`` query params are
     forwarded to the template so the JS can convert them to hash state on load.
     """
-    parsed = parse_protocol_data(data)
+    parsed = parse_protocol_data(document)
     chart_config = get_chart_config(t)
 
     # Build column metadata and pre-compute all column data (with transforms)
@@ -1974,11 +1922,23 @@ def handle_protocol(data, lang, t, dropped_lines_count=None):
         'after_protocol_json': parsed['after_protocol_json'],
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
-        'dropped_lines_count': dropped_lines_count,
+        'dropped_lines_count': document['dropped_lines_count'],
         'api_constants': api_constants[lang],
         'legacy_config': legacy_config,
         'legacy_selected': legacy_selected,
+        'warnings': [format_parse_warning(w, lang) for w in document['warnings']],
+        'has_embedded_reports': document['has_embedded_reports'],
+        'report_snapshots': [],
+        'snapshot': 'standalone',
     }
+
+    if document['has_embedded_reports'] and document['snapshots']:
+        selected, snapshot = select_report_snapshot(document)
+        protocol_data.update(prepare_report(snapshot, lang))
+        protocol_data.update(snapshot=selected, report_snapshots=[s for s in ('pre', 'post')
+                                                                 if s in document['snapshots']])
+    else:
+        protocol_data['has_embedded_reports'] = False
 
     return render_template('protocol.html', data=protocol_data, t=t, lang=lang)
 

@@ -168,6 +168,23 @@ document.addEventListener('shown.bs.tab', function(e) {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Old combined-protocol links encoded the snapshot in the tab name.
+    const snapshotSelector = document.getElementById('report-snapshot');
+    const oldTab = _hashParams().get('tab') || '';
+    const oldSnapshotTab = /^(before|after)-(json|log)-tab$/.exec(oldTab);
+    if (snapshotSelector && oldSnapshotTab) {
+        const snapshot = oldSnapshotTab[1] === 'before' ? 'pre' : 'post';
+        const url = new URL(location.href);
+        const hash = new URLSearchParams(url.hash.slice(1));
+        hash.set('tab', oldSnapshotTab[2] === 'json' ? 'config-tab' : 'log-tab');
+        url.hash = hash.toString();
+        url.searchParams.set('snapshot', snapshot);
+        if (snapshotSelector.value !== snapshot) {
+            location.replace(url.href);
+            return;
+        }
+        history.replaceState(null, '', url.href);
+    }
     _updateTabLinks();
 
     document.querySelectorAll('.nav-tabs-vislog .nav-link[data-bs-target]').forEach(function(link) {
@@ -378,6 +395,7 @@ function _detectHwVersion(json) {
         'warp':  1,  // WARP1
         'warp2': 2,  // WARP2
         'warp3': 4,  // WARP3
+        'warp4': 32, // WARP4
         'wem':   8,  // WEM
         'wem2':  16, // WEM2
     };
@@ -539,6 +557,7 @@ function _escapeHtml(str) {
 function make_jsonview(json, selector, options = {}) {
     const container = document.querySelector(selector);
     const tree = jsonview.create(json);
+    const savedConfigs = new Set(Array.isArray(json.modified) ? json.modified : []);
     const apiConstants = options.apiConstants || null;
     const hwVersion = options.hwVersion || -1;  // -1 = ANY
 
@@ -623,18 +642,16 @@ function make_jsonview(json, selector, options = {}) {
             }
         }
 
-        // Handle modified configurations
-        if(node.key && node.key.includes('modified')) {
-            if(node.value && (node.value.modified == 1 || node.value.modified == 2 || node.value.modified == 3)) {
-                const search = node.key.replace('_modified', '')
-                jsonview.traverse(tree, function(searchNode) {
-                    if(searchNode.key == search) {
-                        if (node.value.modified == 1 || node.value.modified == 3) {
-                            searchNode.el.classList.add("important");
-                        }
-                        searchNode.el.classList.add("modified-config");
-                    }
-                });
+        if (node.parent === tree && typeof node.key === 'string' && node.el) {
+            // The new list contains filenames: flatten API paths, not underscores
+            // in filenames (wifi/sta_config -> wifi_sta_config).
+            const saved = savedConfigs.has(node.key.replace(/\//g, '_'));
+            const legacy = json[node.key + '_modified']?.modified;
+            if (saved || legacy == 1 || legacy == 2 || legacy == 3) {
+                node.el.classList.add('modified-config');
+            }
+            if (legacy == 1 || legacy == 3) {
+                node.el.classList.add('important');
             }
         }
     });
@@ -831,9 +848,11 @@ function initProtocolChart(data) {
                 const logCb = document.getElementById('proto-log-axis');
                 if (logCb) logCb.checked = true;
             }
-            // Strip query params, put state in hash instead
-            const cleanUrl = window.location.pathname;
-            history.replaceState(null, '', cleanUrl);
+            // Migrate only legacy chart parameters; retain the report snapshot and tabs.
+            const cleanUrl = new URL(window.location.href);
+            cleanUrl.searchParams.delete('configuration');
+            cleanUrl.searchParams.delete('selected');
+            history.replaceState(null, '', cleanUrl.href);
             _protoUpdateHash();
         }
     } else {
@@ -852,17 +871,18 @@ function initProtocolChart(data) {
         }
     }
 
-    // Initialize JSON viewers and log textareas
-    const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
-    const hwVersion = _detectHwVersion(protocolJson);
-    const jsonviewOpts = data.api_constants
-        ? { apiConstants: data.api_constants, hwVersion: hwVersion }
-        : {};
-    make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
-    make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
+    if (!data.has_embedded_reports) {
+        const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
+        const hwVersion = _detectHwVersion(protocolJson);
+        const jsonviewOpts = data.api_constants
+            ? { apiConstants: data.api_constants, hwVersion: hwVersion }
+            : {};
+        make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
+        make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
 
-    document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
-    document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
+        document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
+        document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
+    }
 
     // Render chart with initial selection
     protoRenderChart();
@@ -942,6 +962,22 @@ function vislog_report(data) {
 
     document.getElementById('report-log-text').value = data.report_log;
 
+    initReportFeatures(data);
+}
+
+function selectReportSnapshot(snapshot) {
+    const url = new URL(location.href);
+    url.searchParams.set('snapshot', snapshot);
+    // Reload so packet data, selection and detail rows belong to only one snapshot.
+    location.href = url.href;
+}
+
+function renderReportCharts() {
+    if (cmData) renderCmChart();
+    if (metersData) renderMetersCharts();
+}
+
+function initReportFeatures(data) {
     // Only set trace text if the element exists (might not if no remaining trace content)
     const traceText = document.getElementById('report-trace-text');
     if (traceText) {
@@ -960,7 +996,7 @@ function vislog_report(data) {
 
     // Initialize the Wireshark-style iso15118_ll packet list (lazy fetch)
     if (data.iso15118_ll_available) {
-        initIso15118PacketList();
+        initIso15118PacketList(data.has_embedded_reports ? data.snapshot : null);
     }
 
     // Initialize charge manager chart if parsed data is available
@@ -989,12 +1025,13 @@ let iso15118TzOffset = 0;  // charger's UTC offset in seconds
 let iso15118SelectedRow = null;
 let iso15118DetailRow = null;
 
-function initIso15118PacketList() {
+function initIso15118PacketList(snapshot) {
     const statusEl = document.getElementById('iso15118-status');
     const listEl = document.getElementById('iso15118-packet-list');
     if (!statusEl || !listEl) return;
 
-    const url = location.pathname.replace(/\/+$/, '') + '/iso15118.json';
+    let url = location.pathname.replace(/\/+$/, '') + '/iso15118.json';
+    if (snapshot) url += '?snapshot=' + encodeURIComponent(snapshot);
     fetch(url)
         .then(r => {
             if (!r.ok) throw new Error('HTTP ' + r.status);

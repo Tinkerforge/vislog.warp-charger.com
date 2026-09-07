@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Internationalization strings for vislog.warp-charger.com"""
 
+import re
+
 SUPPORTED_LANGUAGES = ['de', 'en']
 DEFAULT_LANGUAGE = 'de'
 
@@ -28,6 +30,9 @@ TRANSLATIONS = {
         'tab_config_after': 'Konfiguration nach dem Ladeprotokoll',
         'tab_log_before': 'Log vor dem Ladeprotokoll',
         'tab_log_after': 'Log nach dem Ladeprotokoll',
+        'report_snapshot_label': 'Debug-Report:',
+        'snapshot_before': 'Vorher',
+        'snapshot_after': 'Nachher',
 
         # --- report page ---
         'page_title_report': 'WARP Charger Debug-Report-Visualisierer',
@@ -78,6 +83,14 @@ TRANSLATIONS = {
         # --- warnings ---
         'warning_label': 'Achtung:',
         'dropped_lines_warning': '${count} Zeilen wurden aus den CSV-Daten entfernt. Das Ladeprotokoll ist unvollst\u00e4ndig.',
+        'parse_warning_duplicate_section': 'Doppelter Abschnitt {section}; das erste Vorkommen wird verwendet.',
+        'parse_warning_missing_end': 'Fehlende Endmarkierung f\u00fcr {section}.',
+        'parse_warning_unexpected_end': 'Unerwartete Endmarkierung f\u00fcr {section}.',
+        'parse_warning_unknown_section': 'Unbekannter Abschnitt {section}; wird nicht angezeigt.',
+        'parse_warning_invalid_json': 'Ung\u00fcltiges JSON in {section}.',
+        'parse_warning_missing_data': 'Fehlende Daten f\u00fcr {section}.',
+        'parse_warning_missing_charge_table': 'Ladetabelle oder millis-Spalte fehlt.',
+        'parse_warning_invalid_charge_table': 'Die Ladetabelle konnte nicht gelesen werden.',
 
         # --- common ---
         'toggle_theme': 'Dunkel-/Hellmodus umschalten',
@@ -102,7 +115,7 @@ TRANSLATIONS = {
         'collapse_all': 'Alle zuklappen',
         'collapse_all_title': 'Alle Knoten zuklappen',
         'legend_modified': 'Konfiguration ge\u00e4ndert',
-        'legend_important': 'Konfiguration ge\u00e4ndert aber nicht gespeichert',
+        'legend_important': 'Konfiguration seit Start oder Zur\u00fccksetzen ge\u00e4ndert',
         'legend_info': 'API-Dokumentation verf\u00fcgbar',
         'censored_value': 'im Debug-Report zensiert',
         'legend_censored': 'Wert im Debug-Report zensiert',
@@ -200,6 +213,9 @@ TRANSLATIONS = {
         'tab_config_after': 'Configuration after charge log',
         'tab_log_before': 'Log before charge log',
         'tab_log_after': 'Log after charge log',
+        'report_snapshot_label': 'Debug report:',
+        'snapshot_before': 'Before',
+        'snapshot_after': 'After',
 
         # --- report page ---
         'page_title_report': 'WARP Charger Debug Report Visualizer',
@@ -250,6 +266,14 @@ TRANSLATIONS = {
         # --- warnings ---
         'warning_label': 'Warning:',
         'dropped_lines_warning': '${count} lines were removed from the CSV data. The charge log is incomplete.',
+        'parse_warning_duplicate_section': 'Duplicate section {section}; using the first occurrence.',
+        'parse_warning_missing_end': 'Missing end marker for {section}.',
+        'parse_warning_unexpected_end': 'Unexpected end marker for {section}.',
+        'parse_warning_unknown_section': 'Unknown section {section}; not displayed.',
+        'parse_warning_invalid_json': 'Invalid JSON in {section}.',
+        'parse_warning_missing_data': 'Missing {section} data.',
+        'parse_warning_missing_charge_table': 'Missing charge table or millis column.',
+        'parse_warning_invalid_charge_table': 'Could not parse the charge table.',
 
         # --- common ---
         'toggle_theme': 'Toggle dark/light mode',
@@ -274,7 +298,7 @@ TRANSLATIONS = {
         'collapse_all': 'Collapse all',
         'collapse_all_title': 'Collapse all nodes',
         'legend_modified': 'Configuration modified',
-        'legend_important': 'Configuration modified but not saved',
+        'legend_important': 'Configuration changed since boot or reset',
         'legend_info': 'API documentation available',
         'censored_value': 'censored in debug report',
         'legend_censored': 'Value censored in debug report',
@@ -357,3 +381,21 @@ def get_translations(lang):
     if lang not in SUPPORTED_LANGUAGES:
         lang = DEFAULT_LANGUAGE
     return TRANSLATIONS[lang]
+
+
+def format_parse_warning(message, lang):
+    """Localize a parser warning, preserving section names and unknown messages."""
+    for pattern, key in (
+        (r'Duplicate section (?P<section>[A-Z0-9_]+); using the first occurrence\.', 'parse_warning_duplicate_section'),
+        (r'Missing end marker for (?P<section>[A-Z0-9_]+)\.', 'parse_warning_missing_end'),
+        (r'Unexpected end marker for (?P<section>[A-Z0-9_]+)\.', 'parse_warning_unexpected_end'),
+        (r'Unknown section (?P<section>[A-Z0-9_]+); not displayed\.', 'parse_warning_unknown_section'),
+        (r'Invalid JSON in (?P<section>[A-Z0-9_]+)\.', 'parse_warning_invalid_json'),
+        (r'Missing (?P<section>[A-Z0-9_]+) data\.', 'parse_warning_missing_data'),
+        (r'Missing charge table or millis column\.', 'parse_warning_missing_charge_table'),
+        (r'Could not parse the charge table\.', 'parse_warning_invalid_charge_table'),
+    ):
+        match = re.fullmatch(pattern, message)
+        if match:
+            return get_translations(lang)[key].format(**match.groupdict())
+    return message

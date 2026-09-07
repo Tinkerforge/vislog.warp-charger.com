@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import chart_column_card %}
+{% from "report_components.html" import report_notices, report_feature_tabs, report_feature_panes %}
 
 {% block title %}{{ t.page_title_protocol }}{% endblock %}
 
@@ -11,6 +12,7 @@
 {% endblock %}
 
 {% block body %}
+    {{ report_notices(data, t, show_firmware=data.has_embedded_reports) }}
     {% if data.dropped_lines_count %}
     <div class="alert alert-warning alert-dismissible fade show m-2" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
@@ -26,7 +28,26 @@
                 <i class="bi bi-graph-up"></i> {{ t.chart_title }}
             </a>
         </li>
+        {% if data.has_embedded_reports %}
+        <li class="nav-item d-flex align-items-center ms-3 px-2 py-1" role="presentation">
+            <select id="report-snapshot" class="form-select form-select-sm w-auto" aria-label="{{ t.report_snapshot_label }}" onchange="selectReportSnapshot(this.value)">
+                {% for snapshot in data.report_snapshots %}
+                <option value="{{ snapshot }}"{% if snapshot == data.snapshot %} selected{% endif %}>{{ t.snapshot_before if snapshot == 'pre' else t.snapshot_after }}</option>
+                {% endfor %}
+            </select>
+        </li>
+        {% endif %}
         <li class="nav-item" role="presentation">
+            {% if data.has_embedded_reports %}
+            <a class="nav-link" id="config-tab" href="#tab=config-tab" data-bs-toggle="tab" data-bs-target="#report-json" role="tab">
+                <i class="bi bi-gear"></i> {{ t.tab_configuration }}
+            </a>
+        </li>
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="log-tab" href="#tab=log-tab" data-bs-toggle="tab" data-bs-target="#report-log" role="tab">
+                <i class="bi bi-journal-text"></i> {{ t.tab_event_log }}
+            </a>
+            {% else %}
             <a class="nav-link" id="before-json-tab" href="#tab=before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" role="tab">
                 <i class="bi bi-gear"></i> {{ t.tab_config_before }}
             </a>
@@ -45,7 +66,11 @@
             <a class="nav-link" id="after-log-tab" href="#tab=after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" role="tab">
                 <i class="bi bi-journal-text"></i> {{ t.tab_log_after }}
             </a>
+            {% endif %}
         </li>
+        {% if data.has_embedded_reports %}
+        {{ report_feature_tabs(data, t) }}
+        {% endif %}
         <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
             <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
                 {{ 'EN' if lang == 'de' else 'DE' }}
@@ -87,6 +112,12 @@
         </div>
 
         <!-- Config / Log Tabs -->
+        {% if data.has_embedded_reports %}
+        <div class="tab-pane fade p-3" id="report-json" role="tabpanel"></div>
+        <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
+            <textarea id="report-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
+        </div>
+        {% else %}
         <div class="tab-pane fade p-3" id="before-protocol-json" role="tabpanel">
         </div>
         <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
@@ -97,6 +128,10 @@
         <div class="tab-pane fade p-3" id="after-protocol-log" role="tabpanel">
             <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
         </div>
+        {% endif %}
+        {% if data.has_embedded_reports %}
+        {{ report_feature_panes(data, t, request) }}
+        {% endif %}
     </div>
 {% endblock %}
 
@@ -108,10 +143,12 @@
         // Called by toggleTheme() in vislog.js via the onThemeChanged hook
         function onThemeChanged(theme) {
             protoRenderChart();
+            renderReportCharts();
         }
 
         document.addEventListener('DOMContentLoaded', function() {
             initProtocolChart(data);
+            if (data.has_embedded_reports) vislog_report(data);
         });
     </script>
 {% endblock %}

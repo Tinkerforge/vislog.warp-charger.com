@@ -1,0 +1,250 @@
+{% from "macros.html" import chart_column_card %}
+
+{% macro report_notices(data, t, show_firmware=true) %}
+    {% for warning in data.warnings %}
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <div><strong>{{ t.parsing_warning }}:</strong> {{ warning }}</div>
+    </div>
+    {% endfor %}
+    {% if show_firmware and data.firmware_check %}
+    {% if data.firmware_check.level == 'danger' %}
+    <div class="alert alert-danger d-flex align-items-center gap-2 fs-5 mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <div>
+            <strong>{{ t.warning_label }}</strong>
+            {{ t.firmware_outdated_warning.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-3" role="alert">
+        <i class="bi bi-info-circle-fill"></i>
+        <div>
+            <strong>{{ t.hint_label }}</strong>
+            {{ t.firmware_nonrelease_info.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+{% endmacro %}
+
+{% macro report_feature_tabs(data, t) %}
+        {% if data.meters_parsed %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="meters-tab" href="#tab=meters-tab" data-bs-toggle="tab" data-bs-target="#report-meters" role="tab">
+                <i class="bi bi-graph-up"></i> {{ t.tab_meters }}
+            </a>
+        </li>
+        {% endif %}
+        {% if data.report_trace %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="trace-tab" href="#tab=trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" role="tab">
+                <i class="bi bi-bug"></i> {{ t.tab_trace_log }}
+            </a>
+        </li>
+        {% endif %}
+        {% for module_name, module_content in data.trace_modules.items() %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="trace-{{ module_name }}-tab" href="#tab=trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" role="tab">
+                <i class="bi bi-code-square"></i> {{ module_name }}
+            </a>
+        </li>
+        {% endfor %}
+        <li class="nav-item" role="presentation">
+            <a class="nav-link" id="dump-tab" href="#tab=dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" role="tab">
+                <i class="bi bi-file-binary"></i> {{ t.tab_coredump }}
+            </a>
+        </li>
+{% endmacro %}
+
+{% macro report_feature_panes(data, t, request) %}
+        {% if data.meters_parsed %}
+        <div class="tab-pane fade p-3" id="report-meters" role="tabpanel">
+            {% if data.meters_parsed.history %}
+            <div class="card mb-3">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                    <span>{{ t.meters_history_title }}</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersHistoryResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
+                </div>
+                <div class="card-body">
+                    <div class="meters-chart-wrap">
+                        <canvas id="meters-history-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            {% if data.meters_parsed.live %}
+            <div class="card mb-3">
+                <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                    <span>{{ t.meters_live_title }}</span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="metersLiveResetZoom()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
+                </div>
+                <div class="card-body">
+                    <div class="meters-chart-wrap">
+                        <canvas id="meters-live-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if data.report_trace %}
+        <div class="tab-pane fade p-3" id="report-trace" role="tabpanel">
+            <textarea id="report-trace-text" class="form-control log-textarea" rows="40" readonly></textarea>
+        </div>
+        {% endif %}
+        {% for module_name, module_content in data.trace_modules.items() %}
+        <div class="tab-pane fade p-3" id="trace-{{ module_name }}" role="tabpanel">
+            {% if module_name == 'charge_manager' and data.cm_parsed %}
+            <div class="cm-chart-container mb-3">
+                {% call() chart_column_card(t, 'cm', 'renderCmChart', 'cmSelectAll', 'cmResetZoom') %}
+                    <div id="cm-column-groups" class="chart-columns-grid"></div>
+                {% endcall %}
+                <div class="cm-chart-wrap">
+                    <canvas id="cm-chart"></canvas>
+                </div>
+            </div>
+            {% endif %}
+            {% if module_name == 'iso15118_ll' and data.iso15118_ll_available %}
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <input type="text" id="iso15118-filter" class="form-control form-control-sm iso15118-filter" placeholder="{{ t.iso15118_filter_placeholder }}" disabled>
+                <span id="iso15118-count" class="text-body-secondary small"></span>
+                <span class="text-body-secondary small ms-auto"><i class="bi bi-incognito"></i> {{ t.iso15118_censored_hint }}</span>
+                <a class="btn btn-sm btn-outline-secondary" href="{{ request.path }}/iso15118.pcap{% if data.has_embedded_reports %}?snapshot={{ data.snapshot | urlencode }}{% endif %}" title="{{ t.iso15118_pcap_hint }}">
+                    <i class="bi bi-download"></i> {{ t.iso15118_download_pcap }}
+                </a>
+            </div>
+            <div id="iso15118-status" class="text-body-secondary mb-3">
+                <div class="spinner-border spinner-border-sm me-1" role="status"></div> {{ t.iso15118_loading }}
+            </div>
+            <div id="iso15118-packet-list" class="iso15118-packet-list mb-3 d-none">
+                <table class="iso15118-table">
+                    <thead>
+                        <tr>
+                            <th class="iso15118-col-no">{{ t.iso15118_col_no }}</th>
+                            <th class="iso15118-col-time">{{ t.iso15118_col_time }}</th>
+                            <th class="iso15118-col-addr">{{ t.iso15118_col_source }}</th>
+                            <th class="iso15118-col-addr">{{ t.iso15118_col_destination }}</th>
+                            <th class="iso15118-col-proto">{{ t.iso15118_col_protocol }}</th>
+                            <th class="iso15118-col-len">{{ t.iso15118_col_length }}</th>
+                            <th class="iso15118-col-info">{{ t.iso15118_col_info }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="iso15118-tbody"></tbody>
+                </table>
+            </div>
+            {% else %}
+            <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly></textarea>
+            {% endif %}
+        </div>
+        {% endfor %}
+        <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
+            {% if data.coredump_info.has_coredump %}
+            <div class="row">
+                <div class="col-lg-6">
+                    <!-- Firmware Info Card -->
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="bi bi-cpu"></i> {{ t.firmware_info }}
+                        </div>
+                        <div class="card-body">
+                            {% if data.coredump_info.firmware_name %}
+                            <div class="mb-2">
+                                <strong>{{ t.firmware_label }}</strong>
+                                <code>{{ data.coredump_info.firmware_name }}</code>
+                            </div>
+                            {% endif %}
+                            {% if data.coredump_info.firmware_commit_id %}
+                            <div class="mb-2">
+                                <strong>{{ t.commit_label }}</strong>
+                                <code>{{ data.coredump_info.firmware_commit_id }}</code>
+                            </div>
+                            {% endif %}
+                            {% if data.coredump_info.crashed_task_handle %}
+                            <div>
+                                <strong>{{ t.crashed_task_handle }}</strong>
+                                <code>{{ data.coredump_info.crashed_task_handle }}</code>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Exception Cause Card -->
+                    {% if data.coredump_info.exception_cause %}
+                    <div class="card mb-3 border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <i class="bi bi-exclamation-triangle"></i> {{ t.exception_cause }}
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-2">
+                                <strong>{{ t.code_label }}</strong>
+                                <code>{{ data.coredump_info.exception_cause.code }}</code>
+                            </div>
+                            <div class="mb-2">
+                                <strong>{{ t.name_label }}</strong>
+                                <span class="badge bg-danger">{{ data.coredump_info.exception_cause.name }}</span>
+                            </div>
+                            <div>
+                                <strong>{{ t.description_label }}</strong>
+                                <p class="mb-0 mt-1 text-body-secondary">{{ data.coredump_info.exception_cause.description }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="col-lg-6">
+                    <!-- Registers Card -->
+                    {% if data.coredump_info.registers %}
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <i class="bi bi-list-ol"></i> {{ t.registers }}
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>{{ t.register_col }}</th>
+                                        <th>{{ t.value_col }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for reg_name, reg_value in data.coredump_info.registers.items() %}
+                                    <tr>
+                                        <td><code>{{ reg_name }}</code></td>
+                                        <td><code>{{ reg_value }}</code></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Error Card (if any) -->
+                    {% if data.coredump_info.error %}
+                    <div class="card mb-3 border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <i class="bi bi-exclamation-circle"></i> {{ t.parsing_warning }}
+                        </div>
+                        <div class="card-body">
+                            <p class="mb-0">{{ data.coredump_info.error }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Info about local GDB analysis -->
+            <div class="alert alert-info mt-3">
+                <i class="bi bi-info-circle"></i>
+                <strong>{{ t.hint_label }}</strong> {{ t.coredump_hint }}
+                <code>coredump.py</code>{{ t.coredump_hint_suffix }}
+            </div>
+            {% else %}
+            <div class="alert alert-secondary">
+                <i class="bi bi-info-circle"></i> {{ t.no_coredump }}
+            </div>
+            {% endif %}
+        </div>
+{% endmacro %}
