@@ -5,7 +5,8 @@ import re
 
 
 _MARKER = re.compile(r'^___([A-Z0-9_]+)_(START|END)___[ \t]*$', re.MULTILINE)
-_REPORT_PARTS = ('DEBUG_REPORT', 'EVENT_LOG', 'TRACE_LOG', 'COREDUMP')
+_REPORT_PARTS = ('DEBUG_REPORT', 'EVENT_LOG', 'TRACE_LOG', 'CORE_DUMP')
+_SECTION_ALIASES = {prefix + 'COREDUMP': prefix + 'CORE_DUMP' for prefix in ('', 'PRE_', 'POST_')}
 
 
 def parse_document(content):
@@ -17,9 +18,10 @@ def parse_document(content):
     content = re.sub(r'^\d+ lines have been dropped from the following table\.[ \t]*(?:\n\n|\n|$)',
                      '', content, flags=re.MULTILINE)
     markers = list(_MARKER.finditer(content))
+    # Legacy reports have start-only TRACE_LOG and CORE_DUMP markers.
     marked = any(m[1] in ('DEBUG_REPORT', 'DEBUG_PROTOCOL', 'EVENT_LOG', 'COREDUMP') or
                  m[1].startswith(('PRE_', 'POST_')) or
-                 (m[1] == 'TRACE_LOG' and m[2] == 'END') for m in markers)
+                 (m[1] in ('TRACE_LOG', 'CORE_DUMP') and m[2] == 'END') for m in markers)
     sections = {}
     if marked:
         active = None
@@ -33,7 +35,7 @@ def parse_document(content):
                 sections[name] = _MARKER.sub('', text).strip('\n')
 
         for marker in markers:
-            name, boundary = marker[1], marker[2]
+            name, boundary = _SECTION_ALIASES.get(marker[1], marker[1]), marker[2]
             if boundary == 'START':
                 if active is not None:
                     warnings.append(f'Missing end marker for {active}.')
@@ -74,7 +76,7 @@ def parse_document(content):
                 if marker[2] != 'START':
                     continue
                 end = legacy_markers[i + 1].start() if i + 1 < len(legacy_markers) else len(remainder)
-                name = 'COREDUMP' if marker[1] == 'CORE_DUMP' else marker[1]
+                name = _SECTION_ALIASES.get(marker[1], marker[1])
                 sections[name] = remainder[marker.end():end].strip()
         else:
             for index, name in enumerate(('PRE_DEBUG_REPORT', 'PRE_EVENT_LOG', 'DEBUG_PROTOCOL',
@@ -102,7 +104,7 @@ def parse_document(content):
             'report_json': report_json,
             'event_log': sections.get(prefix + 'EVENT_LOG', ''),
             'trace_log': sections.get(prefix + 'TRACE_LOG', ''),
-            'coredump': sections.get(prefix + 'COREDUMP'),
+            'coredump': sections.get(prefix + 'CORE_DUMP'),
         }
 
     csv = sections.get('DEBUG_PROTOCOL', '').strip()

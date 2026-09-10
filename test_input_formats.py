@@ -61,7 +61,7 @@ def marked_snapshot(snapshot, prefix=''):
             ('DEBUG_REPORT', json.dumps(snapshot['report_json'], indent=2)),
             ('EVENT_LOG', snapshot['event_log']),
             ('TRACE_LOG', snapshot['trace_log']),
-            ('COREDUMP', snapshot['coredump']),
+            ('CORE_DUMP', snapshot['coredump']),
         )
     )
 
@@ -126,6 +126,20 @@ class InputParserTests(unittest.TestCase):
                         parse_document('\ufeff' + padded.replace('\n', newline)), expected,
                     )
 
+    def test_accidental_coredump_spelling_remains_supported(self):
+        for content in (marked_snapshot(snapshot_fixture('standalone')), combined_fixture()):
+            with self.subTest(protocol='DEBUG_PROTOCOL' in content):
+                self.assertEqual(parse_document(content.replace('CORE_DUMP', 'COREDUMP')),
+                                 parse_document(content))
+
+    def test_coredump_only_sections(self):
+        for name in ('CORE_DUMP', 'COREDUMP'):
+            for snapshot, prefix in (('standalone', ''), ('pre', 'PRE_'), ('post', 'POST_')):
+                with self.subTest(name=name, snapshot=snapshot):
+                    document = parse_document(section(prefix + name, 'synthetic-dump'))
+                    self.assertEqual(document['snapshots'][snapshot]['coredump'], 'synthetic-dump')
+                    self.assertFalse(any('Unknown section' in warning for warning in document['warnings']))
+
     def test_legacy_report_with_start_only_trace_and_coredump(self):
         expected = snapshot_fixture('legacy')
         expected['event_log'] = 'legacy-event'
@@ -188,7 +202,7 @@ class InputParserTests(unittest.TestCase):
         self.assertEqual(document['snapshots'], {'standalone': first})
         self.assertCountEqual(document['warnings'], [
             f'Duplicate section {name}; using the first occurrence.'
-            for name in ('DEBUG_REPORT', 'EVENT_LOG', 'TRACE_LOG', 'COREDUMP')
+            for name in ('DEBUG_REPORT', 'EVENT_LOG', 'TRACE_LOG', 'CORE_DUMP')
         ])
 
     def test_missing_end_recovers_at_next_start_and_eof(self):
@@ -229,7 +243,7 @@ class InputParserTests(unittest.TestCase):
 
     def test_invalid_json_recovers_event_trace_or_coredump(self):
         for raw_json in ('{broken', '[]', 'null', '42', '"not an object"'):
-            for name, key in (('EVENT_LOG', 'event_log'), ('TRACE_LOG', 'trace_log'), ('COREDUMP', 'coredump')):
+            for name, key in (('EVENT_LOG', 'event_log'), ('TRACE_LOG', 'trace_log'), ('CORE_DUMP', 'coredump')):
                 with self.subTest(raw_json=raw_json, section=name):
                     document = parse_document(section('DEBUG_REPORT', raw_json) + '\n' + section(name, 'survives'))
                     self.assertEqual(document['snapshots']['standalone']['report_json'], {})
@@ -285,10 +299,13 @@ class InputParserTests(unittest.TestCase):
         self.assertFalse(document['has_embedded_reports'])
 
     def test_ambiguous_trace_coredump_boundary_does_not_leak_dump(self):
-        document = parse_document(section('DEBUG_REPORT', '{"uptime": 123}') + '\n' +
-                                  '___TRACE_LOG_START___\ntrace\nsecret-dump\n___COREDUMP_END___')
-        self.assertEqual(document['snapshots']['standalone']['trace_log'], '')
-        self.assertNotIn('secret-dump', json.dumps(document))
+        for name in ('CORE_DUMP', 'COREDUMP'):
+            for snapshot, prefix in (('standalone', ''), ('pre', 'PRE_'), ('post', 'POST_')):
+                with self.subTest(name=name, snapshot=snapshot):
+                    document = parse_document(section(prefix + 'DEBUG_REPORT', '{"uptime": 123}') + '\n' +
+                                              f'___{prefix}TRACE_LOG_START___\ntrace\nsecret-dump\n___{prefix}{name}_END___')
+                    self.assertEqual(document['snapshots'][snapshot]['trace_log'], '')
+                    self.assertNotIn('secret-dump', json.dumps(document))
 
     def test_file_loader_uses_utf8_sig_and_production_parser(self):
         content = '\ufeff' + combined_fixture().replace('\n', '\r\n')
