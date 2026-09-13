@@ -102,51 +102,8 @@
         </div>
 
         <!-- Config / Log Tabs -->
-        {% set config_default = 'pre' if data.snapshot == 'pre' or 'post' not in data.config_snapshots else 'post' %}
         <div class="tab-pane fade p-3" id="protocol-config" role="tabpanel" aria-labelledby="config-tab">
-            <ul class="nav nav-tabs mb-3" id="config-view-tabs" role="tablist" aria-label="{{ t.tab_configuration }}">
-                {% for snapshot in data.config_snapshots %}
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link{% if snapshot == config_default %} active{% endif %}" id="config-{{ snapshot }}-tab" data-config-view="{{ snapshot }}" data-bs-toggle="tab" data-bs-target="#{{ 'before' if snapshot == 'pre' else 'after' }}-protocol-json" type="button" role="tab" aria-selected="{{ 'true' if snapshot == config_default else 'false' }}">{{ t.snapshot_before if snapshot == 'pre' else t.snapshot_after }}</button>
-                </li>
-                {% endfor %}
-                {% if data.config_diff_available %}
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="config-diff-tab" data-config-view="diff" data-bs-toggle="tab" data-bs-target="#config-diff" type="button" role="tab" aria-selected="false">{{ t.config_diff_short }}</button>
-                </li>
-                {% endif %}
-            </ul>
-            <div class="tab-content">
-                {% for snapshot in data.config_snapshots %}
-                <div class="tab-pane fade{% if snapshot == config_default %} show active{% endif %}" id="{{ 'before' if snapshot == 'pre' else 'after' }}-protocol-json" role="tabpanel" aria-labelledby="config-{{ snapshot }}-tab"></div>
-                {% endfor %}
-        {% if data.config_diff_available %}
-        <div class="tab-pane fade" id="config-diff" role="tabpanel" aria-labelledby="config-diff-tab">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                <input id="config-diff-search" type="search" class="form-control config-diff-search" placeholder="{{ t.config_diff_search }}" aria-label="{{ t.config_diff_search }}">
-                <select id="config-diff-filter" class="form-select w-auto" aria-label="{{ t.config_diff_filter }}">
-                    <option value="all">{{ t.filter_all }}</option>
-                    <option value="changed">{{ t.config_diff_changed }}</option>
-                    <option value="added">{{ t.config_diff_added }}</option>
-                    <option value="removed">{{ t.config_diff_removed }}</option>
-                </select>
-                <span id="config-diff-count" class="small text-body-secondary" role="status"></span>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-sm table-bordered align-top config-diff-table">
-                    <thead><tr>
-                        <th scope="col">{{ t.config_diff_path }}</th>
-                        <th scope="col">{{ t.config_diff_filter }}</th>
-                        <th scope="col">{{ t.snapshot_before }}</th>
-                        <th scope="col">{{ t.snapshot_after }}</th>
-                    </tr></thead>
-                    <tbody id="config-diff-rows"></tbody>
-                </table>
-            </div>
-            <p id="config-diff-empty" class="text-body-secondary d-none"></p>
-        </div>
-        {% endif %}
-            </div>
+            <div id="protocol-json"></div>
         </div>
         <div class="tab-pane fade p-3" id="report-log" role="tabpanel" aria-labelledby="log-tab">
             <div id="protocol-event-log" class="protocol-event-log border rounded" tabindex="0" aria-label="{{ t.tab_event_log }}"></div>

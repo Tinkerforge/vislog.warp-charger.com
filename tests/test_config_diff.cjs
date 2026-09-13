@@ -14,6 +14,16 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(__dirname + '/../static/vislog.js', 'utf8'), context);
 const diff = (before, after) => JSON.parse(JSON.stringify(context.configDiff(before, after)));
 
+test('union tree retains removed fields and array tails without mutating snapshots', () => {
+    const before = {nested: {removed: 1, same: 2}, items: [1, 2, 3], type: {old: true}};
+    const after = {nested: {added: 3, same: 2}, items: [4], type: null};
+    const merged = JSON.parse(JSON.stringify(context.configComparisonTree(before, after)));
+    assert.deepEqual(merged, {nested: {removed: 1, same: 2, added: 3}, items: [4, 2, 3], type: null});
+    assert.deepEqual(after, {nested: {added: 3, same: 2}, items: [4], type: null});
+    const special = JSON.parse('{"__proto__":{"x":1}}');
+    assert.deepEqual(JSON.parse(JSON.stringify(context.configComparisonTree(special, {}))), special);
+});
+
 test('compares nested values without depending on object key order', () => {
     assert.deepEqual(diff({a: {b: 1, c: [null, false, 'text', {}]}},
         {a: {c: [null, false, 'text', {}], b: 1}}), []);

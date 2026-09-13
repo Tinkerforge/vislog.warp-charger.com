@@ -163,10 +163,6 @@ function _clearZoomHash(xKey, yKey) {
 // Works on both protocol and report pages.
 // ---------------------------------------------------------------------------
 document.addEventListener('shown.bs.tab', function(e) {
-    if (e.target.dataset.configView) {
-        _hashSet('config', e.target.dataset.configView);
-        return;
-    }
     const tabId = e.target.id;  // e.g. "chart-tab", "config-tab"
     if (tabId) _hashSet('tab', tabId);
 });
@@ -177,19 +173,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const oldSnapshotTab = /^(before|after)-(json|log)-tab$/.exec(oldTab);
     if (oldSnapshotTab && oldSnapshotTab[2] === 'log' && document.getElementById('protocol-event-log')) {
         _hashSet('tab', 'log-tab');
-    } else if (document.getElementById('config-view-tabs')) {
+    } else if (document.getElementById('protocol-json')) {
         if (oldSnapshotTab && oldSnapshotTab[2] === 'json') {
             _hashSet('tab', 'config-tab');
-            _hashSet('config', oldSnapshotTab[1] === 'before' ? 'pre' : 'post');
         } else if (oldTab === 'config-diff-tab') {
             _hashSet('tab', 'config-tab');
             _hashSet('config', 'diff');
         }
-    }
-    const configView = _hashParams().get('config');
-    if (['pre', 'post', 'diff'].includes(configView)) {
-        const configTab = document.querySelector(`#config-view-tabs [data-config-view="${configView}"]`);
-        if (configTab) bootstrap.Tab.getOrCreateInstance(configTab).show();
     }
     _updateTabLinks();
 
@@ -586,6 +576,7 @@ function make_jsonview(json, selector, options = {}) {
         <div class="json-filters-actions">
             <div class="json-filters btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary active" data-filter="all" title="${T.filter_all_title}">${T.filter_all}</button>
+                ${options.comparison ? `<button class="btn btn-outline-secondary" data-filter="differences">${T.config_only_differences}</button>` : ''}
                 <button class="btn btn-outline-secondary" data-filter="modified" title="${T.filter_modified_title}">${T.filter_modified}</button>
                 <button class="btn btn-outline-secondary" data-filter="numbers" title="${T.filter_numbers_title}">${T.filter_numbers}</button>
                 <button class="btn btn-outline-secondary" data-filter="strings" title="${T.filter_strings_title}">${T.filter_strings}</button>
@@ -625,7 +616,19 @@ function make_jsonview(json, selector, options = {}) {
     container.appendChild(wrapper);
 
     // Render JSON tree
+    // The vendor renderer interpolates strings as HTML. Escape only for rendering,
+    // then restore the original data for comparison, search and API annotations.
+    const originalStrings = [];
+    jsonview.traverse(tree, node => {
+        for (const property of ['key', 'value']) {
+            if (typeof node[property] === 'string') {
+                originalStrings.push([node, property, node[property]]);
+                node[property] = _escapeHtml(node[property]);
+            }
+        }
+    });
     jsonview.render(tree, jsonContent);
+    originalStrings.forEach(([node, property, value]) => { node[property] = value; });
     jsonview.expand(tree);
 
     // Store tree reference on the container for later use
@@ -671,6 +674,7 @@ function make_jsonview(json, selector, options = {}) {
     if (apiConstants) {
         _annotateTree(tree, apiConstants, hwVersion);
     }
+    if (options.comparison) annotateConfigComparison(tree, options.comparison);
 
     // Add search functionality
     const searchInput = wrapper.querySelector('.json-search');
@@ -691,10 +695,13 @@ function make_jsonview(json, selector, options = {}) {
         if (searchTerm.length > 0) {
             jsonview.traverse(tree, function(node) {
                 if (node.el) {
-                    const keyMatch = node.key && node.key.toLowerCase().includes(searchTerm);
-                    const valueMatch = node.value && String(node.value).toLowerCase().includes(searchTerm);
+                    const keyMatch = node.key != null && String(node.key).toLowerCase().includes(searchTerm);
+                    const valueMatch = node.el.textContent.toLowerCase().includes(searchTerm);
 
                     if (keyMatch || valueMatch) {
+                        for (let parent = node.parent; parent; parent = parent.parent) {
+                            if (!parent.isExpanded) jsonview.toggleNode(parent);
+                        }
                         node.el.classList.add('search-highlight');
                         searchResults.push(node.el);
                     }
@@ -741,8 +748,14 @@ function make_jsonview(json, selector, options = {}) {
             this.classList.add('active');
 
             const filter = this.dataset.filter;
+            if (options.comparison) _hashSet('config', filter === 'differences' ? 'diff' : null);
 
-            if (filter === 'modified') {
+            if (filter === 'differences') {
+                jsonview.traverse(tree, node => {
+                    if (node.el) node.el.style.display = node._configDifference ? '' : 'none';
+                    if (node._configDifference && node.children.length && !node.isExpanded) jsonview.toggleNode(node);
+                });
+            } else if (filter === 'modified') {
                 // Special handling for modified filter - show modified items and their children
                 const modifiedNodes = [];
 
@@ -921,42 +934,70 @@ function configDiff(before, after) {
     return rows;
 }
 
-function initConfigDiff(data) {
-    const container = document.getElementById('config-diff');
-    if (!container) return;
-    const search = document.getElementById('config-diff-search');
-    const filter = document.getElementById('config-diff-filter');
-    const tbody = document.getElementById('config-diff-rows');
-    const empty = document.getElementById('config-diff-empty');
-    const rows = configDiff(data.before_protocol_json, data.after_protocol_json).map(row => ({
-        ...row,
-        searchText: [row.path, JSON.stringify(row.before), JSON.stringify(row.after)].join(' ').toLowerCase(),
-    }));
-    const classes = {changed: 'text-bg-warning', added: 'text-bg-success', removed: 'text-bg-danger'};
-    function valueCell(row, side) {
-        if (!Object.prototype.hasOwnProperty.call(row, side)) {
-            return `<span class="text-body-secondary">${_escapeHtml(T.config_diff_absent)}</span>`;
+function configComparisonTree(before, after) {
+    // Use the after snapshot as the main tree, retaining removed keys/array tails.
+    // Define properties explicitly so keys such as __proto__ remain ordinary data.
+    const object = value => value !== null && typeof value === 'object';
+    if (!object(before) || !object(after) || Array.isArray(before) !== Array.isArray(after)) return after;
+    const merged = Array.isArray(after) ? [] : {};
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        const inBefore = Object.prototype.hasOwnProperty.call(before, key);
+        const inAfter = Object.prototype.hasOwnProperty.call(after, key);
+        const value = !inAfter ? before[key] : !inBefore ? after[key] : configComparisonTree(before[key], after[key]);
+        Object.defineProperty(merged, key, {value, enumerable: true, writable: true, configurable: true});
+    }
+    return merged;
+}
+
+function annotateConfigComparison(tree, rows) {
+    const changes = new Map(rows.map(row => [row.path, row]));
+    jsonview.traverse(tree, node => {
+        if (!node.parent) node._configPath = '$';
+        else node._configPath = node.parent._configPath + '[' + (Array.isArray(node.parent.value)
+            ? node.key : JSON.stringify(String(node.key))) + ']';
+        const change = changes.get(node._configPath);
+        node._configInherited = node.parent?._configInherited || (change && change.status);
+        if (!node.el || (!change && !node._configInherited)) return;
+        for (let parent = node; parent; parent = parent.parent) parent._configDifference = true;
+        node.el.classList.add('config-' + (change?.status || node._configInherited));
+        if (!change) return;
+        const badge = document.createElement('span');
+        badge.className = 'config-change-label small';
+        badge.textContent = T['config_diff_' + change.status];
+        node.el.appendChild(badge);
+        if (change.status === 'changed') {
+            const before = document.createElement('span');
+            before.className = 'config-before-value';
+            before.textContent = `${T.snapshot_before}: ${JSON.stringify(change.before)} → ${T.snapshot_after}: `;
+            const valueEl = node.el.querySelector('.json-value');
+            // Preserve the after value's API units/descriptions and documentation buttons.
+            if (valueEl) valueEl.prepend(before);
+            else {
+                before.textContent += JSON.stringify(change.after);
+                node.el.insertBefore(before, badge);
+            }
         }
-        return `<pre>${_escapeHtml(JSON.stringify(row[side], null, 2))}</pre>`;
+    });
+}
+
+function initProtocolConfiguration(data) {
+    const comparison = data.config_diff_available
+        ? configDiff(data.before_protocol_json, data.after_protocol_json) : null;
+    const source = Object.keys(data.after_protocol_json).length || !data.config_snapshots.includes('pre')
+        ? data.after_protocol_json : data.before_protocol_json;
+    const json = comparison ? configComparisonTree(data.before_protocol_json, data.after_protocol_json) : source;
+    make_jsonview(json, '#protocol-json', {
+        apiConstants: data.api_constants, hwVersion: _detectHwVersion(source), comparison,
+    });
+    if (comparison) {
+        const note = document.createElement('div');
+        note.className = 'small text-body-secondary mb-2';
+        note.textContent = comparison.length ? T.config_comparison_hint : T.config_diff_identical;
+        document.querySelector('#protocol-json .json-content').before(note);
+        if (_hashParams().get('config') === 'diff') {
+            document.querySelector('#protocol-json [data-filter="differences"]').click();
+        }
     }
-    function render() {
-        const query = search.value.trim().toLowerCase();
-        const visible = rows.filter(row => (filter.value === 'all' || row.status === filter.value)
-            && row.searchText.includes(query));
-        tbody.innerHTML = visible.map(row => `<tr>
-            <td><code>${_escapeHtml(row.path)}</code></td>
-            <td><span class="badge ${classes[row.status]}">${_escapeHtml(T['config_diff_' + row.status])}</span></td>
-            <td>${valueCell(row, 'before')}</td><td>${valueCell(row, 'after')}</td>
-        </tr>`).join('');
-        document.getElementById('config-diff-count').textContent = T.config_diff_count
-            .replace('${visible}', visible.length).replace('${total}', rows.length);
-        empty.textContent = rows.length ? T.config_diff_no_matches : T.config_diff_identical;
-        empty.classList.toggle('d-none', visible.length !== 0);
-        container.querySelector('table').classList.toggle('d-none', visible.length === 0);
-    }
-    search.addEventListener('input', render);
-    filter.addEventListener('change', render);
-    render();
 }
 
 // ---------------------------------------------------------------------------
@@ -971,7 +1012,7 @@ let protoIsoSignature = '';
 
 function initProtocolChart(data) {
     protoData = data;
-    initConfigDiff(data);
+    initProtocolConfiguration(data);
     initProtocolEventLog(data);
     if (!protoData || !protoData.column_metadata) return;
     if (data.numeric_time_axis) {
@@ -1027,16 +1068,6 @@ function initProtocolChart(data) {
                 if (logCb) logCb.checked = true;
             }
         }
-    }
-
-    for (const [snapshot, selector] of [['pre', '#before-protocol-json'], ['post', '#after-protocol-json']]) {
-        if (!document.querySelector(selector)) continue;
-        const protocolJson = snapshot === 'pre' ? data.before_protocol_json : data.after_protocol_json;
-        const hwVersion = _detectHwVersion(protocolJson);
-        const jsonviewOpts = data.api_constants
-            ? { apiConstants: data.api_constants, hwVersion: hwVersion }
-            : {};
-        make_jsonview(protocolJson, selector, jsonviewOpts);
     }
 
     // Render chart with initial selection

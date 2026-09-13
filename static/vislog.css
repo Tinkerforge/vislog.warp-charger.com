@@ -63,26 +63,28 @@
   border-left: 3px solid var(--bs-success);
 }
 
-/* Before/after configuration diff */
-.config-diff-search {
-  flex: 1 1 16rem;
-  width: auto;
+/* Inline configuration comparison */
+.json-container .line.config-changed {
+  background: var(--bs-warning-bg-subtle);
 }
-
-.config-diff-table {
-  table-layout: fixed;
-  min-width: 40rem;
+.json-container .line.config-added {
+  background: var(--bs-success-bg-subtle);
 }
-
-.config-diff-table th:nth-child(2) {
-  width: 8rem;
+.json-container .line.config-removed {
+  background: var(--bs-danger-bg-subtle);
 }
-
-.config-diff-table pre,
-.config-diff-table code {
+.config-before-value {
+  color: var(--bs-body-color);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin: 0;
+}
+.config-change-label {
+  margin-left: 0.75rem;
+  color: var(--bs-secondary-color);
+}
+#protocol-json .line {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
 }
 
 /* --------------------------------------------------------------------------
