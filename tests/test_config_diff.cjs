@@ -14,14 +14,27 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(__dirname + '/../static/vislog.js', 'utf8'), context);
 const diff = (before, after) => JSON.parse(JSON.stringify(context.configDiff(before, after)));
 
-test('union tree retains removed fields and array tails without mutating snapshots', () => {
+test('union tree retains removed fields and uses current inline arrays without mutating snapshots', () => {
     const before = {nested: {removed: 1, same: 2}, items: [1, 2, 3], type: {old: true}};
     const after = {nested: {added: 3, same: 2}, items: [4], type: null};
     const merged = JSON.parse(JSON.stringify(context.configComparisonTree(before, after)));
-    assert.deepEqual(merged, {nested: {removed: 1, same: 2, added: 3}, items: [4, 2, 3], type: null});
+    assert.deepEqual(merged, {nested: {removed: 1, same: 2, added: 3}, items: [4], type: null});
     assert.deepEqual(after, {nested: {added: 3, same: 2}, items: [4], type: null});
     const special = JSON.parse('{"__proto__":{"x":1}}');
     assert.deepEqual(JSON.parse(JSON.stringify(context.configComparisonTree(special, {}))), special);
+});
+
+test('inline arrays compare entire values, including shrinking and empty arrays', () => {
+    const compare = (before, after) => JSON.parse(JSON.stringify(context.configDiff(before, after, true)));
+    assert.deepEqual(compare({a: [1, false, null]}, {a: [1, false, null]}), []);
+    assert.deepEqual(compare({a: [1, 2]}, {a: []}), [
+        {path: '$["a"]', status: 'changed', before: [1, 2], after: []},
+    ]);
+    assert.deepEqual(compare({a: [{x: 1}]}, {a: [{x: 2}]}), [
+        {path: '$["a"][0]["x"]', status: 'changed', before: 1, after: 2},
+    ]);
+    assert.equal(context.isInlineConfigArray([1, false, null, 'text']), true);
+    assert.equal(context.isInlineConfigArray([[1]]), false);
 });
 
 test('compares nested values without depending on object key order', () => {

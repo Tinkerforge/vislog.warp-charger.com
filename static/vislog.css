@@ -73,18 +73,9 @@
 .json-container .line.config-removed {
   background: var(--bs-danger-bg-subtle);
 }
-.config-before-value {
-  color: var(--bs-body-color);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 .config-change-label {
   margin-left: 0.75rem;
   color: var(--bs-secondary-color);
-}
-#protocol-json .line {
-  flex-wrap: wrap;
-  overflow-wrap: anywhere;
 }
 
 /* --------------------------------------------------------------------------
@@ -338,6 +329,148 @@ body {
   max-height: 600px;
   overflow-y: auto;
   background-color: var(--bs-body-bg);
+}
+
+/* Aligned configuration values with indentation confined to the field column. */
+.json-content.config-tree-table {
+  padding: 0;
+  max-height: max(20rem, calc(100dvh - 13rem));
+  scrollbar-gutter: stable;
+}
+
+.config-tree-table .json-container {
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.config-table-header,
+.config-tree-table .json-container .config-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr);
+  margin: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--bs-border-color) 45%, transparent);
+}
+
+.config-table-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bs-secondary-bg);
+  font-weight: 600;
+}
+
+.config-table-header > div,
+.config-table-value {
+  padding: 0.15rem 0.65rem;
+  min-width: 0;
+}
+
+.config-table-field {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.15rem 0.65rem 0.15rem min(calc(var(--config-indent) + 0.5rem), 35%);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.config-table-field .caret-icon,
+.config-table-field .empty-icon {
+  flex: 0 0 18px;
+}
+
+.config-table-field .field-info-btn {
+  order: 1;
+  position: static;
+  transform: none;
+}
+
+.config-table-value {
+  border-left: 1px solid var(--bs-border-color);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.config-tree-table .json-value,
+.config-tree-table .json-size {
+  margin: 0;
+}
+
+.config-cell-shared {
+  grid-column: 2 / -1;
+}
+
+.config-tree-table .hidden {
+  display: none !important;
+}
+
+.config-table-field .json-size {
+  color: var(--bs-secondary-color);
+  font-size: 0.75rem;
+}
+
+.config-table-value:empty {
+  display: none;
+}
+
+:is(#protocol-json, #report-json) .json-controls {
+  padding: 0.5rem 0.65rem;
+  gap: 0.5rem;
+}
+
+:is(#protocol-json, #report-json) .json-legend {
+  padding: 0.25rem 0.65rem;
+}
+
+@media (min-width: 1200px) {
+  :is(#protocol-json, #report-json) .json-controls {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  :is(#protocol-json, #report-json) .json-search-container {
+    flex: 1 1 18rem;
+  }
+  :is(#protocol-json, #report-json) .json-search {
+    max-width: none;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+  }
+  :is(#protocol-json, #report-json) .json-filters-actions {
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .config-table-header {
+    grid-template-columns: 1fr;
+  }
+  .config-table-header > div:not(:first-child) {
+    display: none;
+  }
+  .config-tree-table .json-container .config-table-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .config-cell-shared {
+    grid-column: 1;
+  }
+  .config-table-value {
+    border-left: 0;
+    padding-top: 0;
+    padding-left: 2rem;
+  }
+  .config-table-value::before {
+    content: attr(data-label) ': ';
+    display: block;
+    color: var(--bs-secondary-color);
+    font-family: var(--bs-body-font-family);
+    font-size: 0.75rem;
+  }
+  .config-cell-shared::before {
+    display: none;
+  }
 }
 
 /* JSON Data Types */

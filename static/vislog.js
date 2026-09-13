@@ -615,6 +615,13 @@ function make_jsonview(json, selector, options = {}) {
     container.innerHTML = '';
     container.appendChild(wrapper);
 
+    // Scalar arrays are leaf values in the configuration table, not one row per index.
+    if (options.treeTable) {
+        jsonview.traverse(tree, node => {
+            if (isInlineConfigArray(node.value)) node.children = [];
+        });
+    }
+
     // Render JSON tree
     // The vendor renderer interpolates strings as HTML. Escape only for rendering,
     // then restore the original data for comparison, search and API annotations.
@@ -675,6 +682,7 @@ function make_jsonview(json, selector, options = {}) {
         _annotateTree(tree, apiConstants, hwVersion);
     }
     if (options.comparison) annotateConfigComparison(tree, options.comparison);
+    if (options.treeTable) layoutConfigTree(tree, jsonContent, options);
 
     // Add search functionality
     const searchInput = wrapper.querySelector('.json-search');
@@ -906,11 +914,21 @@ function initProtocolEventLog(data) {
 // ---------------------------------------------------------------------------
 // Before/after configuration diff
 // ---------------------------------------------------------------------------
-function configDiff(before, after) {
+function isInlineConfigArray(value) {
+    return Array.isArray(value) && value.every(item => item === null || typeof item !== 'object');
+}
+
+function configDiff(before, after, inlineArrays = false) {
     const rows = [];
     const kind = value => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
     function visit(left, right, path) {
         if (left === right) return;
+        if (inlineArrays && isInlineConfigArray(left) && isInlineConfigArray(right)) {
+            if (left.length !== right.length || left.some((value, index) => value !== right[index])) {
+                rows.push({path, status: 'changed', before: left, after: right});
+            }
+            return;
+        }
         const type = kind(left);
         if (type === kind(right) && (type === 'object' || type === 'array')) {
             const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])];
@@ -938,6 +956,7 @@ function configComparisonTree(before, after) {
     // Use the after snapshot as the main tree, retaining removed keys/array tails.
     // Define properties explicitly so keys such as __proto__ remain ordinary data.
     const object = value => value !== null && typeof value === 'object';
+    if (isInlineConfigArray(before) && isInlineConfigArray(after)) return after;
     if (!object(before) || !object(after) || Array.isArray(before) !== Array.isArray(after)) return after;
     const merged = Array.isArray(after) ? [] : {};
     for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
@@ -956,6 +975,7 @@ function annotateConfigComparison(tree, rows) {
         else node._configPath = node.parent._configPath + '[' + (Array.isArray(node.parent.value)
             ? node.key : JSON.stringify(String(node.key))) + ']';
         const change = changes.get(node._configPath);
+        node._configChange = change;
         node._configInherited = node.parent?._configInherited || (change && change.status);
         if (!node.el || (!change && !node._configInherited)) return;
         for (let parent = node; parent; parent = parent.parent) parent._configDifference = true;
@@ -965,35 +985,130 @@ function annotateConfigComparison(tree, rows) {
         badge.className = 'config-change-label small';
         badge.textContent = T['config_diff_' + change.status];
         node.el.appendChild(badge);
-        if (change.status === 'changed') {
-            const before = document.createElement('span');
-            before.className = 'config-before-value';
-            before.textContent = `${T.snapshot_before}: ${JSON.stringify(change.before)} → ${T.snapshot_after}: `;
-            const valueEl = node.el.querySelector('.json-value');
-            // Preserve the after value's API units/descriptions and documentation buttons.
-            if (valueEl) valueEl.prepend(before);
-            else {
-                before.textContent += JSON.stringify(change.after);
-                node.el.insertBefore(before, badge);
+    });
+}
+
+function layoutConfigTree(tree, content, options) {
+    const comparison = Array.isArray(options.comparison);
+    content.classList.add('config-tree-table');
+    const header = document.createElement('div');
+    header.className = 'config-table-header';
+    const headings = comparison ? [T.config_field, T.snapshot_before, T.snapshot_after] : [T.config_field, T.value_col];
+    headings.forEach((text, index) => {
+        const cell = document.createElement('div');
+        cell.textContent = text;
+        if (!comparison && index === 1) cell.className = 'config-cell-shared';
+        header.appendChild(cell);
+    });
+    content.prepend(header);
+
+    function valueCell(node, value, present, label) {
+        const cell = document.createElement('div');
+        cell.className = 'config-table-value';
+        cell.dataset.label = label;
+        if (!present) {
+            cell.classList.add('text-body-secondary');
+            cell.textContent = T.config_diff_absent;
+            return cell;
+        }
+        cell.textContent = JSON.stringify(value);
+        // Resolve the before value independently: units/constants can differ from after.
+        const resolved = options.apiConstants && _resolveFieldEntry(node, options.apiConstants);
+        const field = resolved?.fieldEntry;
+        if (field?.censored && value === null) {
+            cell.textContent = `*${T.censored_value}*`;
+        } else if (field && (value === null || typeof value !== 'object')) {
+            const constant = field.constants?.find(c =>
+                (c.version === -1 || options.hwVersion === -1 || (c.version & options.hwVersion) !== 0)
+                && c.val === (typeof value === 'boolean' ? String(value) : value));
+            if (constant) {
+                const hint = document.createElement('span');
+                hint.className = 'enum-hint';
+                hint.textContent = ` (${constant.desc})`;
+                cell.appendChild(hint);
             }
+            if (field.unit) {
+                const unit = document.createElement('span');
+                unit.className = 'unit-hint';
+                unit.textContent = ` ${field.unit.abbr}`;
+                unit.title = field.unit.name;
+                cell.appendChild(unit);
+            }
+        }
+        return cell;
+    }
+
+    jsonview.traverse(tree, node => {
+        if (!node.el) return;
+        const row = node.el;
+        row.classList.add('config-table-row');
+        row.style.setProperty('--config-indent', row.style.marginLeft || '0px');
+        const field = document.createElement('div');
+        field.className = 'config-table-field';
+        let value = row.querySelector('.json-value');
+        let size = row.querySelector('.json-size');
+        const inlineArray = isInlineConfigArray(node.value);
+        if (inlineArray) {
+            value?.remove();
+            value = document.createElement('span');
+            value.className = 'json-value config-inline-array';
+            value.textContent = JSON.stringify(node.value);
+            if (!size) {
+                size = document.createElement('span');
+                size.className = 'json-size';
+            }
+            size.textContent = `[${node.value.length}]`;
+            const caret = row.querySelector('.caret-icon');
+            if (caret) {
+                const spacer = document.createElement('div');
+                spacer.className = 'empty-icon';
+                caret.replaceWith(spacer);
+            }
+        }
+        // Move existing elements rather than rebuilding them, preserving caret/popover handlers.
+        value?.remove();
+        size?.remove();
+        row.querySelector('.json-separator')?.remove();
+        while (row.firstChild) field.appendChild(row.firstChild);
+        row.appendChild(field);
+        const status = node._configChange?.status || node._configInherited;
+        const change = node._configChange;
+        // Section sizes belong to the field name, not a separate value row on mobile.
+        if (size && (inlineArray || (!status && !value))) field.appendChild(size);
+        const current = value || (status ? size : null);
+        const displayValue = (label, shared = false) => {
+            const cell = document.createElement('div');
+            cell.className = 'config-table-value' + (shared ? ' config-cell-shared' : '');
+            cell.dataset.label = label;
+            if (current) cell.appendChild(current);
+            return cell;
+        };
+        if (!comparison || !status) {
+            row.appendChild(displayValue(T.value_col, true));
+        } else if (status === 'removed') {
+            row.append(displayValue(T.snapshot_before), valueCell(node, null, false, T.snapshot_after));
+        } else {
+            row.appendChild(valueCell(node, change?.before,
+                !!change && Object.prototype.hasOwnProperty.call(change, 'before'), T.snapshot_before));
+            row.appendChild(displayValue(T.snapshot_after));
         }
     });
 }
 
 function initProtocolConfiguration(data) {
     const comparison = data.config_diff_available
-        ? configDiff(data.before_protocol_json, data.after_protocol_json) : null;
+        ? configDiff(data.before_protocol_json, data.after_protocol_json, true) : null;
     const source = Object.keys(data.after_protocol_json).length || !data.config_snapshots.includes('pre')
         ? data.after_protocol_json : data.before_protocol_json;
     const json = comparison ? configComparisonTree(data.before_protocol_json, data.after_protocol_json) : source;
     make_jsonview(json, '#protocol-json', {
-        apiConstants: data.api_constants, hwVersion: _detectHwVersion(source), comparison,
+        apiConstants: data.api_constants, hwVersion: _detectHwVersion(source), comparison, treeTable: true,
     });
     if (comparison) {
         const note = document.createElement('div');
         note.className = 'small text-body-secondary mb-2';
-        note.textContent = comparison.length ? T.config_comparison_hint : T.config_diff_identical;
-        document.querySelector('#protocol-json .json-content').before(note);
+        note.textContent = T.config_diff_identical;
+        if (!comparison.length) document.querySelector('#protocol-json .json-content').before(note);
         if (_hashParams().get('config') === 'diff') {
             document.querySelector('#protocol-json [data-filter="differences"]').click();
         }
@@ -1319,9 +1434,9 @@ function protoIsoShowPacket(index) {
 
 function vislog_report(data) {
     const hwVersion = _detectHwVersion(data.report_json);
-    const jsonviewOpts = data.api_constants
-        ? { apiConstants: data.api_constants, hwVersion: hwVersion }
-        : {};
+    const jsonviewOpts = {
+        apiConstants: data.api_constants, hwVersion, treeTable: true,
+    };
     if (document.getElementById('report-json')) make_jsonview(data.report_json, '#report-json', jsonviewOpts);
 
     const reportLog = document.getElementById('report-log-text');
