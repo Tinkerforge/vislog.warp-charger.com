@@ -1170,32 +1170,127 @@ function initProtocolEventLog(data) {
     const container = document.getElementById('protocol-event-log');
     if (!container) return;
     const merged = mergeEventLogs(data.before_protocol_log, data.after_protocol_log);
-    container.replaceChildren();
+    const sections = [];
     function section(label, lines, added = false) {
-        const heading = document.createElement('div');
-        heading.className = 'protocol-log-heading small fw-semibold';
-        heading.textContent = label;
-        const pre = document.createElement('pre');
-        pre.className = added ? 'protocol-log-added' : '';
-        pre.textContent = lines.join('\n');
-        container.append(heading, pre);
+        sections.push({label, lines, added});
     }
     if (merged.before.length) section(T.tab_log_before, merged.before);
     if (merged.after.length) {
         if (merged.before.length && !merged.overlap) {
-            const note = document.createElement('div');
-            note.className = 'protocol-log-heading small text-body-secondary';
-            note.textContent = T.event_log_no_overlap;
-            container.appendChild(note);
+            sections.push({note: T.event_log_no_overlap});
         }
         section(merged.overlap ? T.event_log_added : T.tab_log_after, merged.after, merged.overlap > 0);
     } else {
-        const note = document.createElement('div');
-        note.className = 'protocol-log-heading small text-body-secondary';
-        note.textContent = merged.overlap ? T.event_log_no_new
-            : merged.before.length ? T.event_log_no_after : T.event_log_empty;
-        container.appendChild(note);
+        sections.push({note: merged.overlap ? T.event_log_no_new
+            : merged.before.length ? T.event_log_no_after : T.event_log_empty});
     }
+    initEventLogViewer(container, sections, [...merged.before, ...merged.after].join('\n'));
+}
+
+function initEventLogViewer(container, sections, copyText) {
+    const viewer = container.closest('.event-log-viewer');
+    const control = name => viewer.querySelector(`[data-log-${name}]`);
+    const entries = [];
+    const fragment = document.createDocumentFragment();
+    for (const {label, lines = [], added, note} of sections) {
+        const section = document.createElement('div');
+        section.className = 'event-log-section' + (added ? ' protocol-log-added' : '');
+        if (label || note) {
+            const heading = document.createElement('div');
+            heading.className = label ? 'event-log-heading' : 'event-log-note';
+            heading.textContent = label || note;
+            section.appendChild(heading);
+        }
+        for (const text of lines) {
+            const row = document.createElement('div');
+            row.className = 'event-log-line';
+            const number = document.createElement('span');
+            number.className = 'event-log-line-number';
+            number.dataset.number = entries.length + 1;
+            number.setAttribute('aria-hidden', 'true');
+            const content = document.createElement('span');
+            content.className = 'event-log-line-text';
+            content.textContent = text;
+            row.append(number, content);
+            section.appendChild(row);
+            entries.push({text, content});
+        }
+        fragment.appendChild(section);
+    }
+    container.replaceChildren(fragment);
+    container.style.setProperty('--log-number-width', `${Math.max(3, String(entries.length).length) + 2}ch`);
+
+    let matches = [];
+    let matchedEntries = [];
+    let current = -1;
+    function selectMatch(index) {
+        if (current >= 0) matches[current].classList.remove('is-current');
+        current = matches.length ? (index + matches.length) % matches.length : -1;
+        if (current >= 0) {
+            const match = matches[current];
+            match.classList.add('is-current');
+            match.scrollIntoView({block: 'nearest', inline: 'nearest'});
+        }
+        control('matches').textContent = control('search').value
+            ? T.event_log_matches.replace('${current}', current + 1).replace('${total}', matches.length) : '';
+        control('prev').disabled = control('next').disabled = !matches.length;
+    }
+    control('search').oninput = () => {
+        for (const entry of matchedEntries) entry.content.textContent = entry.text;
+        matchedEntries = [];
+        matches = [];
+        current = -1;
+        const query = control('search').value;
+        if (query) {
+            // A literal, case-insensitive search; match offsets refer to the original text.
+            const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+            for (const entry of entries) {
+                const hits = [...entry.text.matchAll(pattern)];
+                if (!hits.length) continue;
+                matchedEntries.push(entry);
+                const parts = document.createDocumentFragment();
+                let offset = 0;
+                for (const hit of hits) {
+                    parts.appendChild(document.createTextNode(entry.text.slice(offset, hit.index)));
+                    const mark = document.createElement('mark');
+                    mark.textContent = hit[0];
+                    parts.appendChild(mark);
+                    matches.push(mark);
+                    offset = hit.index + hit[0].length;
+                }
+                parts.appendChild(document.createTextNode(entry.text.slice(offset)));
+                entry.content.replaceChildren(parts);
+            }
+        }
+        selectMatch(0);
+    };
+    control('search').onkeydown = event => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            selectMatch(current + (event.shiftKey ? -1 : 1));
+        } else if (event.key === 'Escape') {
+            control('search').value = '';
+            control('search').oninput();
+        }
+    };
+    control('prev').onclick = () => selectMatch(current - 1);
+    control('next').onclick = () => selectMatch(current + 1);
+    control('wrap').onchange = () => {
+        container.classList.toggle('is-wrapped', control('wrap').checked);
+        selectMatch(current);
+    };
+    control('copy').disabled = !copyText;
+    control('copy-status').textContent = '';
+    control('copy').onclick = async () => {
+        try {
+            await navigator.clipboard.writeText(copyText);
+            control('copy-status').textContent = T.event_log_copied;
+        } catch {
+            control('copy-status').textContent = T.event_log_copy_failed;
+        }
+    };
+    container.classList.toggle('is-wrapped', control('wrap').checked);
+    control('search').oninput();
 }
 
 // ---------------------------------------------------------------------------
@@ -1871,7 +1966,11 @@ function vislog_report(data) {
     if (document.getElementById('report-json')) make_jsonview(data.report_json, '#report-json', jsonviewOpts);
 
     const reportLog = document.getElementById('report-log-text');
-    if (reportLog) reportLog.value = data.report_log;
+    if (reportLog) {
+        const text = data.report_log || '';
+        initEventLogViewer(reportLog, text ? [{lines: text.replace(/\r\n?/g, '\n').split('\n')}]
+            : [{note: T.event_log_empty}], text);
+    }
 
     initReportFeatures(data);
 }

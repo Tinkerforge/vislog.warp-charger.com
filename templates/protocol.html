@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import chart_column_card %}
+{% from "macros.html" import chart_column_card, event_log_viewer %}
 {% from "report_components.html" import report_notices, report_feature_tabs, report_feature_panes %}
 
 {% block title %}{{ t.page_title_protocol }}{% endblock %}
@@ -110,7 +110,7 @@
             <div id="protocol-json"></div>
         </div>
         <div class="tab-pane fade p-3" id="report-log" role="tabpanel" aria-labelledby="log-tab">
-            <div id="protocol-event-log" class="protocol-event-log border rounded" tabindex="0" aria-label="{{ t.tab_event_log }}"></div>
+            {{ event_log_viewer(t, 'protocol-event-log') }}
         </div>
         {% if data.has_embedded_reports %}
         {{ report_feature_panes(data, t, request) }}

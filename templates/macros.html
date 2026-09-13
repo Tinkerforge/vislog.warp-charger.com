@@ -31,3 +31,26 @@
     <button type="button" class="chart-reset-control btn btn-sm btn-outline-secondary" onclick="{{ reset_fn }}()" title="{{ t.reset_zoom_title }}"><i class="bi bi-arrows-angle-expand"></i> {{ t.reset_zoom }}</button>
 </div>
 {% endmacro %}
+
+{% macro event_log_viewer(t, content_id) %}
+<div class="event-log-viewer">
+    <div class="event-log-toolbar mb-2">
+        <div class="event-log-search-controls">
+            <input type="search" class="form-control form-control-sm" data-log-search placeholder="{{ t.event_log_search }}" aria-label="{{ t.event_log_search }}" title="{{ t.event_log_search_keys }}">
+            <span class="event-log-match-count small" data-log-matches role="status" aria-live="polite"></span>
+            <div class="btn-group">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-log-prev disabled title="{{ t.event_log_previous }}" aria-label="{{ t.event_log_previous }}"><i class="bi bi-chevron-up"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-log-next disabled title="{{ t.event_log_next }}" aria-label="{{ t.event_log_next }}"><i class="bi bi-chevron-down"></i></button>
+            </div>
+        </div>
+        <div class="event-log-actions">
+            <label class="form-check mb-0 small">
+                <input type="checkbox" class="form-check-input" data-log-wrap checked> {{ t.event_log_wrap }}
+            </label>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-log-copy title="{{ t.event_log_copy_title }}"><i class="bi bi-copy"></i> {{ t.event_log_copy }}</button>
+            <span class="small" data-log-copy-status role="status" aria-live="polite"></span>
+        </div>
+    </div>
+    <div id="{{ content_id }}" class="event-log-content border rounded is-wrapped" tabindex="0" role="region" aria-label="{{ t.tab_event_log }}"></div>
+</div>
+{% endmacro %}

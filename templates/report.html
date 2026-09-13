@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "report_components.html" import report_notices, report_feature_tabs, report_feature_panes %}
+{% from "macros.html" import event_log_viewer %}
 
 {% block title %}{{ t.page_title_report }}{% endblock %}
 
@@ -42,7 +43,7 @@
         <div class="tab-pane fade show active p-3" id="report-json" role="tabpanel">
         </div>
         <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
-            <textarea id="report-log-text" class="form-control log-textarea" rows="40" readonly></textarea>
+            {{ event_log_viewer(t, 'report-log-text') }}
         </div>
         {{ report_feature_panes(data, t, request) }}
     </div>
