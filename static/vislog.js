@@ -1124,9 +1124,13 @@ let protoIsoTimes = [];
 let protoIsoSelected = null;
 let protoIsoHover = null;
 let protoIsoSignature = '';
+let protoStateLanes = [];
+let protoStateSignature = '';
 
 function initProtocolChart(data) {
     protoData = data;
+    protoStateLanes = protoBuildStateLanes(data);
+    protoStateSignature = '';
     initProtocolConfiguration(data);
     initProtocolEventLog(data);
     if (!protoData || !protoData.column_metadata) return;
@@ -1251,7 +1255,7 @@ function protoRenderChart() {
             ? items => items.length ? protoFormatTime(items[0].parsed.x) : '' : undefined,
         xTitle: protoData.numeric_time_axis
             ? (protoData.time_offset_ms === null ? T.protocol_uptime_axis : T.protocol_time_axis) : undefined,
-        plugins: [protoIsoPlugin],
+        plugins: [protoStatePlugin, protoIsoPlugin],
     });
 
     // Persist selection in URL hash for sharing
@@ -1277,6 +1281,119 @@ function protoFormatTime(ms, precise = true) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` +
         (precise ? `.${String(value % 1000).padStart(3, '0')}` : '');
 }
+
+// A sample's state holds until the next sample. Never extend beyond the recording.
+function protoStateSegments(times, values) {
+    const segments = [];
+    for (let i = 0; i < times.length; i++) {
+        const start = times[i];
+        const end = i + 1 < times.length ? times[i + 1] : start;
+        const value = Number.isInteger(values[i]) && values[i] >= 0 ? values[i] : null;
+        const previous = segments[segments.length - 1];
+        if (previous && previous.value === value && previous.end === start) previous.end = end;
+        else segments.push({start, end, value});
+    }
+    return segments;
+}
+
+function protoBuildStateLanes(data) {
+    const times = data.numeric_time_axis ? data.sample_times_ms : data.labels.map((_, i) => i);
+    const hw = [data.report_json, data.after_protocol_json, data.before_protocol_json]
+        .map(_detectHwVersion).find(version => version !== -1) ?? -1;
+    return ['iec61851_state', 'charger_state', 'contactor_state', 'error_state', 'contactor_error']
+        .filter(key => data.all_column_data[key]?.some(value => Number.isInteger(value) && value >= 0))
+        .map(key => ({key, hw, segments: protoStateSegments(times, data.all_column_data[key])}));
+}
+
+function protoStateDescription(key, value, hw) {
+    if (value === null) return {label: T.state_unknown, color: 'unknown'};
+    if (key === 'iec61851_state' && value <= 4) {
+        return {label: T['state_iec_' + value], color: ['idle', 'connected', 'charging', 'warning', 'error'][value]};
+    }
+    if (key === 'charger_state' && value <= 4) {
+        return {label: T['state_charger_' + value], color: ['idle', 'warning', 'connected', 'charging', 'error'][value]};
+    }
+    if (key === 'error_state' || key === 'contactor_error') {
+        return {label: value === 0 ? T.state_ok : `${T.state_error} ${value}`, color: value === 0 ? 'idle' : 'error'};
+    }
+    if (key === 'contactor_state') {
+        if ((hw === 4 || hw === 32) && value <= 31) {
+            const contacts = value & 3;
+            const label = [T.state_open, 'L1+N', 'L2+L3', 'L1+N + L2+L3'][contacts];
+            return {label: (value & 4) ? `${label} · ${T.state_error}` : label,
+                color: (value & 4) ? 'error' : contacts ? 'charging' : 'idle'};
+        }
+        if ((hw === 1 || hw === 2) && value <= 3) {
+            return {label: T['state_monitor_' + value], color: ['idle', 'connected', 'warning', 'charging'][value]};
+        }
+    }
+    return {label: `${T.state_unknown} (${value})`, color: 'unknown'};
+}
+
+function protoStateLaneLabel(key) {
+    return {
+        iec61851_state: 'IEC 61851', charger_state: T.state_charger,
+        contactor_state: T.state_contactor, error_state: T.state_error,
+        contactor_error: T.chart_contactor_error,
+    }[key];
+}
+
+const protoStatePlugin = {
+    id: 'protoStateTimeline',
+    afterDraw(chart) {
+        const container = document.getElementById('proto-state-timeline');
+        if (!container) return;
+        container.classList.toggle('d-none', !protoStateLanes.length);
+        if (!protoStateLanes.length) return;
+        const scale = chart.scales.x;
+        const {left, right} = chart.chartArea;
+        const signature = [scale.min, scale.max, left, right].join(',');
+        if (signature === protoStateSignature) return;
+        protoStateSignature = signature;
+        const lanes = document.getElementById('proto-state-lanes');
+        const detail = document.getElementById('proto-state-detail');
+        lanes.replaceChildren();
+        detail.textContent = '';
+        const formatTime = value => protoData.numeric_time_axis ? protoFormatTime(value)
+            : protoData.labels[value] ?? String(value);
+        for (const lane of protoStateLanes) {
+            const row = document.createElement('div');
+            row.className = 'proto-state-lane';
+            row.style.marginLeft = left + 'px';
+            row.style.width = Math.max(0, right - left) + 'px';
+            const name = document.createElement('div');
+            name.className = 'proto-state-name';
+            name.textContent = protoStateLaneLabel(lane.key);
+            const track = document.createElement('div');
+            track.className = 'proto-state-track';
+            row.append(name, track);
+            lanes.appendChild(row);
+            for (const segment of lane.segments) {
+                if (segment.end < scale.min || segment.start > scale.max) continue;
+                const start = Math.max(left, scale.getPixelForValue(segment.start));
+                const end = Math.min(right, scale.getPixelForValue(segment.end));
+                if (end < start) continue;
+                const {label, color} = protoStateDescription(lane.key, segment.value, lane.hw);
+                const band = document.createElement('button');
+                band.type = 'button';
+                band.className = 'proto-state-band state-' + color;
+                const width = Math.max(1, end - start);
+                band.style.left = Math.min(start - left, Math.max(0, right - left - width)) + 'px';
+                band.style.width = width + 'px';
+                if (width > 35) band.textContent = label;
+                const duration = protoData.numeric_time_axis ? ` · ${((segment.end - segment.start) / 1000).toFixed(3)} s` : '';
+                band.title = `${name.textContent}: ${label} · ${formatTime(segment.start)} – ${formatTime(segment.end)}${duration}`;
+                if (segment.value !== null) band.title += ` · ${lane.key}=${segment.value}`;
+                band.setAttribute('aria-label', band.title);
+                const show = () => { detail.textContent = band.title; };
+                band.addEventListener('mouseenter', show);
+                band.addEventListener('focus', show);
+                band.addEventListener('click', show);
+                track.appendChild(band);
+            }
+        }
+    },
+};
 
 const protoIsoPlugin = {
     id: 'protoIsoTimeline',

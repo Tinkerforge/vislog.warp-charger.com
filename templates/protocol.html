@@ -79,6 +79,10 @@
             <div class="chart-container p-2">
                 <canvas id="proto-chart"></canvas>
             </div>
+            <section id="proto-state-timeline" class="p-2 pt-0 d-none" aria-label="{{ t.state_timeline }}">
+                <div id="proto-state-lanes"></div>
+                <div id="proto-state-detail" class="small text-body-secondary" role="status"></div>
+            </section>
             {% if data.iso15118_ll_available %}
             <section class="p-2 pt-0" aria-label="{{ t.iso15118_timeline }}">
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
