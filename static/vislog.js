@@ -1578,11 +1578,13 @@ let protoIsoHover = null;
 let protoIsoSignature = '';
 let protoStateLanes = [];
 let protoStateSignature = '';
+let protoStateSelected = null;
 
 function initProtocolChart(data) {
     protoData = data;
     protoStateLanes = protoBuildStateLanes(data);
     protoStateSignature = '';
+    protoStateSelected = null;
     initProtocolConfiguration(data);
     initProtocolEventLog(data);
     if (!protoData || !protoData.column_metadata) return;
@@ -1817,8 +1819,78 @@ function protoStateLaneLabel(key) {
     }[key];
 }
 
+function protoStateDetail(lane, segment) {
+    const formatTime = value => protoData.numeric_time_axis ? protoFormatTime(value)
+        : protoData.labels[value] ?? String(value);
+    const {label} = protoStateDescription(lane.key, segment.value, lane.hw);
+    const duration = protoData.numeric_time_axis ? ` · ${((segment.end - segment.start) / 1000).toFixed(3)} s` : '';
+    return `${protoStateLaneLabel(lane.key)}: ${label} · ${formatTime(segment.start)} – ${formatTime(segment.end)}${duration}`
+        + (segment.value !== null ? ` · ${lane.key}=${segment.value}` : '');
+}
+
+function protoStateUpdateSelection() {
+    const selected = protoStateSelected;
+    document.getElementById('proto-state-selection').classList.toggle('proto-state-selection', !!selected);
+    document.getElementById('proto-state-actions').classList.toggle('d-none', !selected);
+    document.getElementById('proto-state-detail').textContent = selected
+        ? protoStateDetail(selected.lane, selected.segment) : '';
+    document.getElementById('proto-state-zoom').disabled = !selected || selected.segment.end <= selected.segment.start;
+    document.querySelectorAll('.proto-state-band').forEach(band => {
+        band.setAttribute('aria-pressed', String(!!selected && band._stateLane === selected.lane
+            && band._stateSegment === selected.segment));
+    });
+}
+
+function protoStateClear() {
+    const focused = document.activeElement;
+    if (document.getElementById('proto-state-actions').contains(focused)) {
+        const band = document.querySelector('.proto-state-band[aria-pressed="true"]');
+        (band || document.getElementById('proto-state-timeline')).focus({preventScroll: true});
+    }
+    protoStateSelected = null;
+    protoStateUpdateSelection();
+    protoChart.draw();
+}
+
+function protoStateZoom() {
+    if (!protoStateSelected) return;
+    const {start, end} = protoStateSelected.segment;
+    if (end <= start) return;
+    protoChart.zoomScale('x', {min: start, max: end}, 'none');
+    _saveZoomToHash(protoChart, protoData.numeric_time_axis ? 'zms' : 'zx', 'zy');
+}
+
 const protoStatePlugin = {
     id: 'protoStateTimeline',
+    afterDatasetsDraw(chart) {
+        if (!protoStateSelected) return;
+        const {start, end} = protoStateSelected.segment;
+        const {x} = chart.scales;
+        if (end < x.min || start > x.max) return;
+        const {left, right, top, bottom} = chart.chartArea;
+        const x1 = Math.max(left, x.getPixelForValue(start));
+        const x2 = Math.min(right, x.getPixelForValue(end));
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(left, top, right - left, bottom - top);
+        ctx.clip();
+        ctx.fillStyle = document.documentElement.getAttribute('data-bs-theme') === 'dark'
+            ? 'rgba(108, 180, 238, 0.14)' : 'rgba(13, 110, 253, 0.10)';
+        ctx.fillRect(x1, top, Math.max(1, x2 - x1), bottom - top);
+        ctx.strokeStyle = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? '#6cb4ee' : '#0d6efd';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        for (const time of [start, end]) {
+            if (time < x.min || time > x.max) continue;
+            const pixel = x.getPixelForValue(time);
+            ctx.moveTo(pixel, top);
+            ctx.lineTo(pixel, bottom);
+        }
+        ctx.stroke();
+        ctx.restore();
+    },
     afterDraw(chart) {
         const container = document.getElementById('proto-state-timeline');
         if (!container) return;
@@ -1832,9 +1904,6 @@ const protoStatePlugin = {
         const lanes = document.getElementById('proto-state-lanes');
         const detail = document.getElementById('proto-state-detail');
         lanes.replaceChildren();
-        detail.textContent = '';
-        const formatTime = value => protoData.numeric_time_axis ? protoFormatTime(value)
-            : protoData.labels[value] ?? String(value);
         for (const lane of protoStateLanes) {
             const row = document.createElement('div');
             row.className = 'proto-state-lane';
@@ -1860,17 +1929,27 @@ const protoStatePlugin = {
                 band.style.left = Math.min(start - left, Math.max(0, right - left - width)) + 'px';
                 band.style.width = width + 'px';
                 if (width > 35) band.textContent = label;
-                const duration = protoData.numeric_time_axis ? ` · ${((segment.end - segment.start) / 1000).toFixed(3)} s` : '';
-                band.title = `${name.textContent}: ${label} · ${formatTime(segment.start)} – ${formatTime(segment.end)}${duration}`;
-                if (segment.value !== null) band.title += ` · ${lane.key}=${segment.value}`;
+                band.title = protoStateDetail(lane, segment);
                 band.setAttribute('aria-label', band.title);
-                const show = () => { detail.textContent = band.title; };
+                band._stateLane = lane;
+                band._stateSegment = segment;
+                const show = () => { if (!protoStateSelected) detail.textContent = band.title; };
                 band.addEventListener('mouseenter', show);
                 band.addEventListener('focus', show);
-                band.addEventListener('click', show);
+                const hide = () => {
+                    if (!protoStateSelected && !band.matches(':hover, :focus')) detail.textContent = '';
+                };
+                band.addEventListener('mouseleave', hide);
+                band.addEventListener('blur', hide);
+                band.addEventListener('click', () => {
+                    protoStateSelected = {lane, segment};
+                    protoStateUpdateSelection();
+                    protoChart.draw();
+                });
                 track.appendChild(band);
             }
         }
+        protoStateUpdateSelection();
     },
 };
 

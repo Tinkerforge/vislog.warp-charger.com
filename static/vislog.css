@@ -471,6 +471,7 @@ body {
   min-width: 0;
   flex-wrap: nowrap;
   overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 0;
   scrollbar-width: thin;
 }
@@ -484,7 +485,6 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.5rem;
-  border-left: 1px solid var(--bs-border-color);
 }
 
 .trace-navigation {
@@ -1022,7 +1022,8 @@ body {
   text-overflow: ellipsis;
 }
 .proto-state-band:hover,
-.proto-state-band:focus-visible {
+.proto-state-band:focus-visible,
+.proto-state-band[aria-pressed="true"] {
   outline: 2px solid var(--bs-emphasis-color);
   outline-offset: -2px;
   z-index: 1;
@@ -1039,6 +1040,18 @@ body {
 #proto-state-detail {
   min-height: 1.25rem;
   overflow-wrap: anywhere;
+}
+
+.proto-state-selection {
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  background: var(--bs-primary-bg-subtle);
+  border-left: 3px solid var(--bs-primary);
+  border-radius: 0.25rem;
+}
+
+#proto-state-actions .btn-outline-secondary {
+  --bs-btn-color: var(--bs-body-color);
 }
 
 /* Info button at the start of JSON lines */
