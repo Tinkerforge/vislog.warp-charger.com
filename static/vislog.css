@@ -1067,6 +1067,8 @@ footer a:hover {
 }
 
 .iso15118-packet-list {
+  min-width: 0;
+  container-type: inline-size;
   max-height: 75vh;
   overflow: auto;
   border: 1px solid var(--bs-border-color);
@@ -1165,11 +1167,111 @@ footer a:hover {
   outline: 1px solid var(--bs-primary-border-subtle);
 }
 
+.iso15118-table tbody tr[data-idx]:focus-visible {
+  outline: 2px solid var(--bs-emphasis-color);
+  outline-offset: -2px;
+}
+
 /* Packet detail (protocol tree) */
 .iso15118-detail-row > td {
   background: var(--bs-secondary-bg);
-  padding: 0.5rem 0.75rem;
+  padding: 0;
   white-space: normal;
+}
+
+.iso15118-detail-host {
+  display: none;
+  min-width: 0;
+}
+
+.iso15118-detail {
+  color: var(--bs-body-color);
+  background: var(--bs-secondary-bg);
+  font-family: var(--bs-font-sans-serif);
+  font-size: 0.875rem;
+}
+
+.iso15118-detail-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+#iso15118-detail-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.iso15118-detail-summary {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.iso15118-detail-header .btn-outline-secondary {
+  --bs-btn-color: var(--bs-body-color);
+}
+
+.iso15118-detail-body {
+  padding: 0.75rem;
+  min-height: 0;
+}
+
+@media (max-width: 1199.98px) {
+  .iso15118-detail-row .iso15118-detail {
+    position: sticky;
+    left: 0;
+    width: 100cqi;
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .iso15118-workspace.has-selection {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  .iso15118-workspace.has-selection .iso15118-detail-host {
+    display: block;
+  }
+
+  .iso15118-workspace.has-selection .iso15118-table {
+    table-layout: fixed;
+  }
+
+  .iso15118-workspace.has-selection .iso15118-table td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .iso15118-workspace.has-selection .iso15118-col-no { width: 3rem; }
+  .iso15118-workspace.has-selection .iso15118-col-time { width: 7.25rem; }
+  .iso15118-workspace.has-selection .iso15118-col-addr { width: 7rem; }
+  .iso15118-workspace.has-selection .iso15118-col-proto { width: 5.5rem; }
+  .iso15118-workspace.has-selection .iso15118-col-len { width: 3.5rem; }
+
+  .iso15118-detail {
+    display: flex;
+    flex-direction: column;
+    max-height: 75vh;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    overflow: hidden;
+  }
+
+  .iso15118-detail-header {
+    flex-shrink: 0;
+  }
+
+  .iso15118-detail-body {
+    overflow: auto;
+  }
 }
 
 .iso15118-tree {

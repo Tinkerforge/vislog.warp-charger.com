@@ -1966,6 +1966,13 @@ function initIso15118PacketList(snapshot) {
                 const row = ev.target.closest('tr[data-idx]');
                 if (row) toggleIso15118Detail(row);
             });
+            document.getElementById('iso15118-tbody').addEventListener('keydown', ev => {
+                if (ev.target.matches('tr[data-idx]') && (ev.key === 'Enter' || ev.key === ' ')) {
+                    ev.preventDefault();
+                    toggleIso15118Detail(ev.target);
+                }
+            });
+            window.matchMedia('(min-width: 1200px)').addEventListener('change', placeIso15118Detail);
 
             renderIso15118Rows('');
         })
@@ -2005,9 +2012,8 @@ function iso15118ProtoClass(proto) {
 
 function renderIso15118Rows(filter) {
     const tbody = document.getElementById('iso15118-tbody');
+    clearIso15118Detail();
     tbody.textContent = '';
-    iso15118SelectedRow = null;
-    iso15118DetailRow = null;
 
     const needle = filter.trim().toLowerCase();
     const frag = document.createDocumentFragment();
@@ -2023,6 +2029,9 @@ function renderIso15118Rows(filter) {
 
         const row = document.createElement('tr');
         row.dataset.idx = idx;
+        row.tabIndex = 0;
+        row.setAttribute('aria-expanded', 'false');
+        row.setAttribute('aria-controls', 'iso15118-detail');
         const cls = iso15118ProtoClass(proto);
         if (cls) row.className = cls;
 
@@ -2033,6 +2042,7 @@ function renderIso15118Rows(filter) {
             const td = document.createElement('td');
             td.className = tdCls;
             td.textContent = text;
+            td.title = text;
             row.appendChild(td);
         }
         frag.appendChild(row);
@@ -2046,39 +2056,67 @@ function renderIso15118Rows(filter) {
         : `${iso15118Packets.length}`;
 }
 
-function toggleIso15118Detail(row) {
-    const wasSelected = (iso15118SelectedRow === row);
-
+function clearIso15118Detail(restoreFocus = false) {
+    const detail = document.getElementById('iso15118-detail');
+    detail.classList.add('d-none');
+    document.getElementById('iso15118-detail-host').appendChild(detail);
+    document.getElementById('iso15118-workspace').classList.remove('has-selection');
     if (iso15118DetailRow) {
         iso15118DetailRow.remove();
         iso15118DetailRow = null;
     }
     if (iso15118SelectedRow) {
         iso15118SelectedRow.classList.remove('iso15118-selected');
+        iso15118SelectedRow.setAttribute('aria-expanded', 'false');
+        if (restoreFocus) iso15118SelectedRow.focus({preventScroll: true});
         iso15118SelectedRow = null;
     }
+}
+
+function placeIso15118Detail() {
+    if (!iso15118SelectedRow) return;
+    const detail = document.getElementById('iso15118-detail');
+    // Move the same tree between panes so expanded fields survive resizing.
+    if (window.matchMedia('(min-width: 1200px)').matches) {
+        document.getElementById('iso15118-detail-host').appendChild(detail);
+        if (iso15118DetailRow) iso15118DetailRow.remove();
+        iso15118DetailRow = null;
+    } else {
+        if (!iso15118DetailRow) {
+            iso15118DetailRow = document.createElement('tr');
+            iso15118DetailRow.className = 'iso15118-detail-row';
+            const td = document.createElement('td');
+            td.colSpan = 7;
+            iso15118DetailRow.appendChild(td);
+            iso15118SelectedRow.after(iso15118DetailRow);
+        }
+        iso15118DetailRow.firstElementChild.appendChild(detail);
+    }
+}
+
+function toggleIso15118Detail(row) {
+    const wasSelected = (iso15118SelectedRow === row);
+    clearIso15118Detail();
     if (wasSelected) return;  // second click on the same row just collapses
 
-    const pkt = iso15118Packets[parseInt(row.dataset.idx, 10)];
-
-    const detailRow = document.createElement('tr');
-    detailRow.className = 'iso15118-detail-row';
-    const td = document.createElement('td');
-    td.colSpan = 7;
-    if (protoData && protoData.iso15118_correlation_available) {
-        const button = document.createElement('button');
-        button.className = 'btn btn-sm btn-outline-secondary mb-2';
-        button.textContent = T.iso15118_show_chart;
-        button.addEventListener('click', () => protoIsoShowPacket(Number(row.dataset.idx)));
-        td.appendChild(button);
-    }
-    td.appendChild(renderIso15118Tree(pkt[7], true, false));
-    detailRow.appendChild(td);
-    row.after(detailRow);
+    const index = Number(row.dataset.idx);
+    const pkt = iso15118Packets[index];
+    document.getElementById('iso15118-detail-title').textContent =
+        `${T.iso15118_col_no} ${pkt[0]} · ${pkt[4]} · ${iso15118FormatTime(pkt[1])}`;
+    document.getElementById('iso15118-detail-summary').textContent = pkt[6];
+    const button = document.getElementById('iso15118-detail-chart');
+    button.classList.toggle('d-none', !(protoData && protoData.iso15118_correlation_available));
+    button.onclick = () => protoIsoShowPacket(index);
+    const body = document.getElementById('iso15118-detail-body');
+    body.replaceChildren(renderIso15118Tree(pkt[7], true, false));
 
     row.classList.add('iso15118-selected');
+    row.setAttribute('aria-expanded', 'true');
     iso15118SelectedRow = row;
-    iso15118DetailRow = detailRow;
+    document.getElementById('iso15118-workspace').classList.add('has-selection');
+    document.getElementById('iso15118-detail').classList.remove('d-none');
+    placeIso15118Detail();
+    body.scrollTop = 0;
 }
 
 function renderIso15118Tree(nodes, topLevel, openAll) {
