@@ -208,13 +208,133 @@ document.addEventListener('DOMContentLoaded', function() {
 // Shared chart infrastructure – colors, factory, helpers
 // ---------------------------------------------------------------------------
 const CHART_COLORS = [
-    '#0d6efd', '#fd7e14', '#198754', '#dc3545', '#6f42c1',
-    '#20c997', '#ffc107', '#0dcaf0', '#d63384', '#6c757d',
-    '#0b5ed7', '#e35d13', '#157347', '#bb2d3b', '#5a32a3',
-    '#1aa179', '#e0a800', '#0aa2c0', '#b52b6a', '#565e64',
-    '#3d8bfd', '#ff922b', '#2dce89', '#f5365c', '#8965e0',
-    '#4fd1c5', '#ffcb6b', '#45d0ff', '#e8569a', '#8898aa',
+    '#2563eb', '#c65d12', '#0d8875', '#cf375b', '#8250cf',
+    '#087f9c', '#9b7500', '#b044aa', '#4e7d20', '#64748b',
+    '#4263c7', '#ae4c27', '#19734b', '#b52c40', '#664ac4',
+    '#16798a', '#a06415', '#a93d79', '#567222', '#526780',
+    '#3277ba', '#bc6829', '#27826c', '#c04f70', '#9451b7',
+    '#278099', '#8d7618', '#ae498f', '#6c7b25', '#68718e',
 ];
+const CHART_COLORS_DARK = [
+    '#60a5fa', '#fb923c', '#34d3b0', '#fb7185', '#b197fc',
+    '#38c8e8', '#e5bf52', '#e78bd6', '#a3c969', '#a0aec0',
+    '#8ba4fa', '#e8a07c', '#68c895', '#ed8f9c', '#a99aee',
+    '#6cc9d4', '#e2b16f', '#d48ab4', '#b4c585', '#91aacb',
+    '#77b8ec', '#dba16e', '#83c9b7', '#dc9ab0', '#c49bdd',
+    '#81c8dc', '#cabe78', '#d29bc0', '#c2ca8c', '#a9b1ce',
+];
+
+function chartSignalColor(index) {
+    const colors = document.documentElement.getAttribute('data-bs-theme') === 'dark'
+        ? CHART_COLORS_DARK : CHART_COLORS;
+    return colors[index % colors.length];
+}
+
+// The crosshair follows the inspected sample; the HTML inspector keeps labels
+// and values readable without changing the chart's data or layout.
+const chartPresentationPlugin = {
+    id: 'chartPresentation',
+    beforeDraw(chart) {
+        const {ctx, chartArea: area} = chart;
+        if (!area) return;
+        const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        ctx.save();
+        ctx.fillStyle = dark ? '#ffffff03' : '#f5f8fc';
+        ctx.fillRect(area.left, area.top, area.width, area.height);
+        ctx.strokeStyle = dark ? '#94a3b81c' : '#64748b20';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(area.left, area.top, area.width, area.height);
+        ctx.restore();
+    },
+    afterDatasetsDraw(chart) {
+        const active = chart.tooltip?.getActiveElements() || [];
+        if (!active.length || !chart.tooltip.opacity) return;
+        const {ctx, chartArea: area} = chart;
+        const x = active[0].element.x;
+        if (x < area.left || x > area.right) return;
+        const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(area.left, area.top, area.width, area.height);
+        ctx.clip();
+        ctx.strokeStyle = dark ? '#cbd5e180' : '#47556980';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x, area.top);
+        ctx.lineTo(x, area.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        active.forEach(({element, datasetIndex}) => {
+            if (element.skip) return;
+            ctx.beginPath();
+            ctx.arc(element.x, element.y, 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = chart.data.datasets[datasetIndex].borderColor;
+            ctx.fill();
+            ctx.strokeStyle = dark ? '#18212f' : '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        });
+        ctx.restore();
+    },
+    afterDestroy(chart) {
+        chart.$inspector?.remove();
+    },
+};
+
+function chartHoverInspector({chart, tooltip}) {
+    if (!tooltip.opacity) {
+        if (chart.$inspector) chart.$inspector.hidden = true;
+        return;
+    }
+    if (!chart.$inspector) {
+        chart.$inspector = document.createElement('div');
+        chart.$inspector.className = 'chart-hover-inspector';
+        chart.$inspector.setAttribute('role', 'tooltip');
+        chart.canvas.parentElement.appendChild(chart.$inspector);
+    }
+    const inspector = chart.$inspector;
+    inspector.hidden = false;
+    inspector.replaceChildren();
+    const title = document.createElement('div');
+    title.className = 'chart-hover-time';
+    title.textContent = (tooltip.title || []).join(' · ');
+    inspector.appendChild(title);
+    const number = new Intl.NumberFormat(document.documentElement.lang || 'en', {maximumSignificantDigits: 8});
+    const rowLimit = Math.max(1, Math.min(12, Math.floor((Math.min(chart.height, window.innerHeight * 0.6) - 80) / 26)));
+    const items = tooltip.dataPoints || [];
+    items.slice(0, rowLimit).forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'chart-hover-row';
+        const dot = document.createElement('span');
+        dot.className = 'chart-signal-color';
+        dot.style.backgroundColor = item.dataset.borderColor;
+        const label = document.createElement('span');
+        label.className = 'chart-hover-label';
+        label.textContent = item.dataset.label;
+        const value = document.createElement('span');
+        value.className = 'chart-hover-value';
+        // Logarithmic plots substitute 0.01 for zero; show the recorded value.
+        const y = item.dataset.inspectorValues?.[item.dataIndex] ?? item.parsed.y;
+        value.textContent = Number.isFinite(y) ? number.format(y) : '—';
+        row.append(dot, label, value);
+        inspector.appendChild(row);
+    });
+    if (items.length > rowLimit) {
+        const more = document.createElement('div');
+        more.className = 'chart-hover-more';
+        more.textContent = T.chart_more_signals.replace('${count}', items.length - rowLimit);
+        inspector.appendChild(more);
+    }
+    const canvas = chart.canvas.getBoundingClientRect();
+    const parent = chart.canvas.parentElement.getBoundingClientRect();
+    const x = canvas.left - parent.left + tooltip.caretX;
+    const y = canvas.top - parent.top + tooltip.caretY;
+    const width = inspector.offsetWidth;
+    const left = x + 16 + width <= parent.width - 8 ? x + 16 : x - width - 16;
+    inspector.style.left = Math.max(8, Math.min(left, parent.width - width - 8)) + 'px';
+    inspector.style.top = Math.max(8, Math.min(y - 20, parent.height - inspector.offsetHeight - 8)) + 'px';
+}
 
 /**
  * Create (or recreate) a time-series Chart.js line chart.
@@ -240,6 +360,7 @@ const CHART_COLORS = [
 function _createTimeSeriesChart(cfg) {
     const canvas = document.getElementById(cfg.canvasId);
     if (!canvas) return null;
+    canvas.parentElement.classList.add('chart-surface');
 
     if (cfg.prevChart) {
         cfg.prevChart.destroy();
@@ -247,12 +368,14 @@ function _createTimeSeriesChart(cfg) {
 
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     const textColor = isDark ? '#f0f0f0' : '#212529';
-    const gridColor = isDark ? '#3a3a3a' : '#dee2e6';
+    const gridColor = isDark ? '#94a3b814' : '#64748b14';
+    const tickFont = {size: 11, family: 'system-ui, sans-serif'};
 
     const yScale = {
         display: true,
-        ticks: { color: textColor },
-        grid: { color: gridColor },
+        ticks: { color: textColor, font: tickFont, padding: 8, maxTicksLimit: 7 },
+        grid: { color: gridColor, drawTicks: false },
+        border: {display: false},
     };
     if (cfg.useLog) {
         yScale.type = 'logarithmic';
@@ -261,14 +384,15 @@ function _createTimeSeriesChart(cfg) {
         yScale.title = { display: true, text: cfg.yTitle, color: textColor };
     }
 
-    const xTicks = { color: textColor };
+    const xTicks = { color: textColor, font: tickFont, padding: 8, maxRotation: 0, maxTicksLimit: 9 };
     if (cfg.xTickCallback) xTicks.callback = cfg.xTickCallback;
     if (cfg.xMaxTicksLimit) xTicks.maxTicksLimit = cfg.xMaxTicksLimit;
 
     const xScale = {
         display: true,
         ticks: xTicks,
-        grid: { color: gridColor }
+        grid: { color: gridColor, drawTicks: false },
+        border: {display: false},
     };
     if (cfg.xScale) Object.assign(xScale, cfg.xScale);
     if (cfg.xTitle) {
@@ -282,13 +406,20 @@ function _createTimeSeriesChart(cfg) {
 
     const chart = new Chart(canvas, {
         type: 'line',
-        plugins: cfg.plugins || [],
+        plugins: [chartPresentationPlugin, ...(cfg.plugins || [])],
         data: { labels: cfg.labels, datasets: cfg.datasets },
         options: {
             animation: false,
+            locale: document.documentElement.lang || 'en',
+            layout: {padding: {top: 12, left: 4, right: 12}},
+            onResize(chart, size) {
+                chart.options.scales.x.ticks.maxTicksLimit = Math.max(2,
+                    Math.min(cfg.xMaxTicksLimit || 9, Math.floor(size.width / 110)));
+                if (chart.$inspector) chart.$inspector.hidden = true;
+            },
             maintainAspectRatio: false,
             elements: { point: { radius: 0 } },
-            interaction: { mode: 'index', intersect: false },
+            interaction: { mode: 'index', axis: 'x', intersect: false },
             plugins: {
                 title: {
                     display: !!cfg.titleText,
@@ -296,20 +427,24 @@ function _createTimeSeriesChart(cfg) {
                     color: textColor,
                 },
                 tooltip: {
+                    enabled: false,
+                    external: chartHoverInspector,
                     mode: 'index',
+                    axis: 'x',
                     intersect: false,
                     callbacks: tooltipCallbacks,
                 },
                 legend: {
-                    labels: { color: textColor, font: { size: 11 } },
+                    labels: { color: textColor, font: tickFont, usePointStyle: true,
+                        pointStyle: 'line', boxWidth: 20, padding: 16 },
                     position: 'bottom',
                 },
                 zoom: {
                     zoom: {
                         drag: {
                             enabled: true,
-                            backgroundColor: 'rgba(85, 85, 85, 0.3)',
-                            borderColor: 'rgba(85, 85, 85, 0.8)',
+                            backgroundColor: 'rgba(96, 165, 250, 0.12)',
+                            borderColor: 'rgba(96, 165, 250, 0.65)',
                             borderWidth: 1,
                             threshold: 20,
                         },
@@ -349,13 +484,14 @@ function _createTimeSeriesChart(cfg) {
  * Build a single Chart.js dataset object from raw data.
  */
 function _chartDataset(label, data, colorIdx) {
-    const color = CHART_COLORS[colorIdx % CHART_COLORS.length];
+    const color = chartSignalColor(colorIdx);
     return {
         label: label,
         data: data,
         borderColor: color,
         backgroundColor: color + '33',
-        borderWidth: 1.5,
+        borderWidth: 1.8,
+        pointHoverRadius: 0,
         pointRadius: 0,
         tension: 0,
         fill: false,
@@ -382,7 +518,8 @@ function initChartPicker(prefix, columns) {
         const dot = document.createElement('span');
         dot.className = 'chart-signal-color';
         dot.setAttribute('aria-hidden', 'true');
-        dot.style.backgroundColor = CHART_COLORS[indices.get(cb.dataset.column) % CHART_COLORS.length];
+        cb.dataset.colorIndex = indices.get(cb.dataset.column);
+        dot.style.backgroundColor = chartSignalColor(indices.get(cb.dataset.column));
         cb.after(dot);
         const text = document.createElement('span');
         text.className = 'chart-signal-label';
@@ -411,6 +548,8 @@ function updateChartPicker(prefix) {
         const inputs = group.querySelectorAll('input[data-column]');
         inputs.forEach(cb => {
             const label = cb.closest('label');
+            const dot = label.querySelector('.chart-signal-color');
+            if (dot) dot.style.backgroundColor = chartSignalColor(Number(cb.dataset.colorIndex));
             const haystack = (cb.dataset.column + ' ' + label.textContent).toLocaleLowerCase();
             label.hidden = (selectedOnly && !cb.checked) || !terms.every(term => haystack.includes(term));
             if (label.hidden && label.contains(document.activeElement)) search.focus();
@@ -1290,7 +1429,9 @@ function protoRenderChart() {
 
         const points = protoData.numeric_time_axis
             ? chartData.map((y, i) => ({x: protoData.sample_times_ms[i], y})) : chartData;
-        datasets.push(_chartDataset(labelLookup[colName].label, points, labelLookup[colName].color));
+        const dataset = _chartDataset(labelLookup[colName].label, points, labelLookup[colName].color);
+        if (useLog) dataset.inspectorValues = rawData;
+        datasets.push(dataset);
     });
 
     protoChart = _createTimeSeriesChart({
@@ -1298,7 +1439,6 @@ function protoRenderChart() {
         prevChart: protoChart,
         labels: protoData.labels,
         datasets: datasets,
-        titleText: T.chart_title || 'Charge Log',
         useLog: useLog,
         zoomXKey: protoData.numeric_time_axis ? 'zms' : 'zx',
         zoomYKey: 'zy',
@@ -2050,7 +2190,6 @@ function renderCmChart() {
         prevChart: cmChart,
         labels: labels,
         datasets: datasets,
-        titleText: T.cm_chart_title || 'Charge Manager',
         useLog: useLog,
         xMaxTicksLimit: 10,
         zoomXKey: 'cmzx',
@@ -2062,7 +2201,7 @@ function renderCmChart() {
         },
         tooltipTitleCallback: function(items) {
             if (!items.length) return '';
-            const idx = items[0].dataIndex;
+            const idx = items[0].parsed.x;
             const ts = tsMap[idx] || nearestTimestamp(idx);
             return ts ? `Row ${idx} - ${ts}` : `Row ${idx}`;
         },
