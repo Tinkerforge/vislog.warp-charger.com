@@ -409,7 +409,7 @@ const chartLegendPlugin = {
     beforeDatasetDraw(chart, {index}) {
         chart.ctx.save();
         // Preview removal: dim the hovered/focused signal, keeping others clear.
-        if (chart.$highlightedSignal === index) chart.ctx.globalAlpha = 0.2;
+        if (chart.$highlightedSignal === index) chart.ctx.globalAlpha = 0.5;
     },
     afterDatasetDraw(chart) {
         chart.ctx.restore();
