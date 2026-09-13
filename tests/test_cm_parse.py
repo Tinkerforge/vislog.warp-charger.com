@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Test script for parse_charge_manager_trace() — both table-based and iteration-based paths."""
+"""Test script for parse_charge_manager_trace() — both table-based and iteration-based paths.
+
+Run from the repository root: python -m tests.test_cm_parse
+"""
 
 import sys
 import json

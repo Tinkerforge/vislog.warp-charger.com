@@ -445,7 +445,7 @@ def _load_iso15118_pcap(lang, uuid):
     """Shared request handling for the iso15118 endpoints.
 
     Validates the request, reads the protocol file and builds the pcap.
-    Returns (pcap_bytes, has_boot_epoch, tz_offset); aborts with 404 on any
+    Returns (pcap_bytes, boot_epoch, tz_offset); aborts with 404 on any
     problem. tz_offset is the charger's UTC offset in seconds (None if
     unknown), used to display packet times in the charger's local time.
     """
@@ -476,7 +476,7 @@ def _load_iso15118_pcap(lang, uuid):
         except Exception as e:
             print(f"Warning: Failed to determine report timezone: {e}")
 
-    return pcap_bytes, boot_epoch != 0, tz_offset
+    return pcap_bytes, boot_epoch, tz_offset
 
 @app.route('/<lang>/<uuid>/iso15118.pcap')
 def download_iso15118_pcap(lang, uuid):
@@ -496,8 +496,8 @@ def iso15118_packets_json(lang, uuid):
     snapshot = request.args.get('snapshot')
     if snapshot not in (None, 'standalone', 'pre', 'post'):
         abort(400)
-    # v7 isolates the selected snapshot and invalidates first-trace caches.
-    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v7.{snapshot or "default"}.json.gz')
+    # v8 retains the exact clock offset used by the pcap writer for correlation.
+    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.iso15118.v8.{snapshot or "default"}.json.gz')
 
     gz_payload = None
     if os.path.exists(cache_path):
@@ -508,7 +508,7 @@ def iso15118_packets_json(lang, uuid):
             gz_payload = None
 
     if gz_payload is None:
-        pcap_bytes, has_boot_epoch, tz_offset = _load_iso15118_pcap(lang, uuid)
+        pcap_bytes, boot_epoch, tz_offset = _load_iso15118_pcap(lang, uuid)
 
         if TSHARK_PATH is None:
             return {'error': 'tshark-unavailable'}, 503
@@ -523,7 +523,8 @@ def iso15118_packets_json(lang, uuid):
             return {'error': 'dissection-failed'}, 503
 
         payload = json.dumps({
-            'has_boot_epoch': has_boot_epoch,
+            'has_boot_epoch': boot_epoch != 0,
+            'boot_epoch_ms': int(boot_epoch * 1000),
             'tz_offset': tz_offset,
             'packets': packets,
         }, separators=(',', ':'))
@@ -1563,6 +1564,21 @@ def dissect_iso15118_pcap(pcap_bytes):
     return packets if packets else None
 
 
+def report_boot_epoch(report):
+    """UTC boot time; zero when no usable RTC/uptime reference is available."""
+    try:
+        rtc = report['rtc/time']
+        uptime = int(report['uptime'])
+        rtc_dt = datetime.datetime(rtc['year'], rtc['month'], rtc['day'],
+                                   rtc['hour'], rtc['minute'], rtc['second'],
+                                   tzinfo=datetime.timezone.utc)
+        if rtc_dt.year >= 2020 and uptime >= 0:
+            return rtc_dt.timestamp() - uptime / 1000.0
+    except (KeyError, ValueError, TypeError, OverflowError):
+        pass
+    return 0
+
+
 def extract_iso15118_pcap(snapshot):
     """Build a pcap using one snapshot's trace and clock metadata.
 
@@ -1574,19 +1590,7 @@ def extract_iso15118_pcap(snapshot):
     if not traces:
         return None, 0
 
-    boot_epoch = 0
-    report = snapshot['report_json']
-    if 'uptime' in report and report.get('rtc/time'):
-        try:
-            rtc = report['rtc/time']
-            rtc_dt = datetime.datetime(rtc['year'], rtc['month'], rtc['day'],
-                                       rtc['hour'], rtc['minute'], rtc['second'],
-                                       tzinfo=datetime.timezone.utc)
-            if rtc_dt.year >= 2020:
-                boot_epoch = rtc_dt.timestamp() - int(report['uptime']) / 1000.0
-        except (KeyError, ValueError, TypeError):
-            pass
-
+    boot_epoch = report_boot_epoch(snapshot['report_json'])
     pcap_bytes = iso15118_ll_to_pcap('\n'.join(traces), boot_epoch)
     return pcap_bytes, boot_epoch
 
@@ -1918,6 +1922,7 @@ def handle_protocol(document, lang, t):
         'column_metadata': column_metadata,
         'all_column_data': all_column_data,
         'labels': parsed['millis'],
+        'sample_times_ms': _sanitize_for_json(parsed['df']['millis'].tolist()) if parsed['df'] is not None else [],
         'before_protocol_json': parsed['before_protocol_json'],
         'after_protocol_json': parsed['after_protocol_json'],
         'before_protocol_log': parsed['before_protocol_log'],
@@ -1940,7 +1945,40 @@ def handle_protocol(document, lang, t):
     else:
         protocol_data['has_embedded_reports'] = False
 
+    protocol_data.update(protocol_clock_metadata(document, protocol_data))
     return render_template('protocol.html', data=protocol_data, t=t, lang=lang)
+
+
+def protocol_clock_metadata(document, data):
+    """Keep numeric sample timing separate from wall-clock display metadata.
+
+    A reset/wrap makes uptime correlation ambiguous. Retain the original
+    sample-index chart in that case rather than overlaying unrelated packets.
+    """
+    times = data['sample_times_ms']
+    valid = bool(times) and all(t is not None and t >= 0 for t in times)
+    valid = valid and all(b >= a for a, b in zip(times, times[1:]))
+    reports = [document['snapshots'][key]['report_json']
+               for key in ('pre', 'post') if key in document['snapshots']]
+    same_boot = True
+    if len(reports) == 2:
+        before, after = reports
+        try:
+            same_boot = int(after['uptime']) >= int(before['uptime'])
+        except (KeyError, TypeError, ValueError):
+            pass
+        before_boots, after_boots = before.get('info/last_boots'), after.get('info/last_boots')
+        if before_boots and after_boots and before_boots != after_boots:
+            same_boot = False
+
+    report = data.get('report_json') or (reports[-1] if reports else {})
+    boot_epoch = report_boot_epoch(report)
+    offset_ms = None
+    if boot_epoch:
+        tz_offset = _report_tz_offset(report, boot_epoch) or 0
+        offset_ms = int(boot_epoch * 1000) + tz_offset * 1000
+    return {'numeric_time_axis': valid, 'iso15118_correlation_available': valid and same_boot,
+            'time_offset_ms': offset_ms}
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG, format="[%(asctime)s %(levelname)-8s%(filename)s:%(lineno)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
 port = int(os.environ.get('PORT', DEFAULT_PORT))

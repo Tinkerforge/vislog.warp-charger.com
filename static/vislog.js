@@ -245,6 +245,8 @@ const CHART_COLORS = [
  * @param {string}        [cfg.yTitle]           - y-axis title text
  * @param {string}        [cfg.zoomXKey]         - URL hash key for x-axis zoom (enables zoom persistence)
  * @param {string}        [cfg.zoomYKey]         - URL hash key for y-axis zoom
+ * @param {Object}        [cfg.xScale]           - x-axis overrides (e.g. numeric time bounds)
+ * @param {Array}         [cfg.plugins]          - chart-local plugins
  * @returns {Chart}       the new Chart instance
  */
 function _createTimeSeriesChart(cfg) {
@@ -280,6 +282,7 @@ function _createTimeSeriesChart(cfg) {
         ticks: xTicks,
         grid: { color: gridColor }
     };
+    if (cfg.xScale) Object.assign(xScale, cfg.xScale);
     if (cfg.xTitle) {
         xScale.title = { display: true, text: cfg.xTitle, color: textColor };
     }
@@ -291,6 +294,7 @@ function _createTimeSeriesChart(cfg) {
 
     const chart = new Chart(canvas, {
         type: 'line',
+        plugins: cfg.plugins || [],
         data: { labels: cfg.labels, datasets: cfg.datasets },
         options: {
             animation: false,
@@ -825,10 +829,27 @@ function collapseAllJson(selector) {
 // ---------------------------------------------------------------------------
 let protoChart = null;
 let protoData = null;
+let protoIsoTimes = [];
+let protoIsoSelected = null;
+let protoIsoHover = null;
+let protoIsoSignature = '';
 
 function initProtocolChart(data) {
     protoData = data;
     if (!protoData || !protoData.column_metadata) return;
+    if (data.numeric_time_axis) {
+        // Old links store sample indices in zx; new links store uptime in zms.
+        const params = _hashParams();
+        if (params.has('zx') && !params.has('zms')) {
+            const bounds = params.get('zx').split(',').map(Number);
+            if (bounds.length === 2 && bounds.every(Number.isFinite)) {
+                _hashSet('zms', bounds.map(i => data.sample_times_ms[
+                    Math.max(0, Math.min(data.sample_times_ms.length - 1, Math.round(i)))
+                ]).join(','));
+            }
+        }
+        _hashSet('zx', null);
+    }
 
     // --- Backward compatibility: convert old ?configuration= or ?selected= to hash ---
     const urlParams = new URLSearchParams(window.location.search);
@@ -927,7 +948,9 @@ function protoRenderChart() {
         // See https://github.com/chartjs/Chart.js/issues/9629
         const chartData = useLog ? rawData.map(v => (v === 0 ? 0.01 : v)) : rawData;
 
-        datasets.push(_chartDataset(labelLookup[colName] || colName, chartData, colorIdx++));
+        const points = protoData.numeric_time_axis
+            ? chartData.map((y, i) => ({x: protoData.sample_times_ms[i], y})) : chartData;
+        datasets.push(_chartDataset(labelLookup[colName] || colName, points, colorIdx++));
     });
 
     protoChart = _createTimeSeriesChart({
@@ -937,8 +960,18 @@ function protoRenderChart() {
         datasets: datasets,
         titleText: T.chart_title || 'Charge Log',
         useLog: useLog,
-        zoomXKey: 'zx',
+        zoomXKey: protoData.numeric_time_axis ? 'zms' : 'zx',
         zoomYKey: 'zy',
+        xScale: protoData.numeric_time_axis ? {
+            type: 'linear', min: protoData.sample_times_ms[0],
+            max: protoData.sample_times_ms[protoData.sample_times_ms.length - 1],
+        } : undefined,
+        xTickCallback: protoData.numeric_time_axis ? value => protoFormatTime(value, false) : undefined,
+        tooltipTitleCallback: protoData.numeric_time_axis
+            ? items => items.length ? protoFormatTime(items[0].parsed.x) : '' : undefined,
+        xTitle: protoData.numeric_time_axis
+            ? (protoData.time_offset_ms === null ? T.protocol_uptime_axis : T.protocol_time_axis) : undefined,
+        plugins: [protoIsoPlugin],
     });
 
     // Persist selection in URL hash for sharing
@@ -950,7 +983,173 @@ function protoSelectAll(checked) {
 }
 
 function protoResetZoom() {
-    chartResetZoom(protoChart, 'zx', 'zy');
+    chartResetZoom(protoChart, protoData.numeric_time_axis ? 'zms' : 'zx', 'zy');
+}
+
+function protoFormatTime(ms, precise = true) {
+    if (protoData.time_offset_ms !== null) {
+        return new Date(Math.round(ms + protoData.time_offset_ms)).toISOString().slice(11, precise ? 23 : 19);
+    }
+    const value = Math.max(0, Math.round(ms));
+    const hours = Math.floor(value / 3600000);
+    const minutes = Math.floor(value / 60000) % 60;
+    const seconds = Math.floor(value / 1000) % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` +
+        (precise ? `.${String(value % 1000).padStart(3, '0')}` : '');
+}
+
+const protoIsoPlugin = {
+    id: 'protoIsoTimeline',
+    afterDraw(chart) {
+        protoIsoRender(chart);
+        const index = protoIsoHover ?? protoIsoSelected;
+        if (index === null || !protoData.iso15118_correlation_available) return;
+        const time = protoIsoTimes[index];
+        const scale = chart.scales.x;
+        if (time < scale.min || time > scale.max || !Number.isFinite(time)) return;
+        const x = scale.getPixelForValue(time);
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.strokeStyle = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? '#f0f0f0' : '#212529';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, chart.chartArea.top);
+        ctx.lineTo(x, chart.chartArea.bottom);
+        ctx.stroke();
+        ctx.restore();
+    },
+};
+
+function protoIsoLane(protocol) {
+    if (protocol.startsWith('HomePlug')) return 0;
+    if (protocol === 'TCP' || /^(TLS|SSL)/.test(protocol)) return 1;
+    if (/^(V2G|ISO.?15118|DIN)/i.test(protocol)) return 2;
+    return 3;
+}
+
+// Cluster in screen space: packet ordering and timing remain untouched.
+function protoIsoClusters(times, packets, min, max, width) {
+    const clusters = [];
+    const lastByLane = [];
+    times.forEach((time, index) => {
+        if (time < min || time > max) return;
+        const lane = protoIsoLane(packets[index][4]);
+        const pixel = (time - min) / (max - min || 1) * width;
+        let cluster = lastByLane[lane];
+        // Leave room for count labels even when packets straddle a bin edge.
+        if (!cluster || pixel - cluster.pixel >= 34) {
+            cluster = {lane, pixel, indices: []};
+            lastByLane[lane] = cluster;
+            clusters.push(cluster);
+        }
+        cluster.indices.push(index);
+    });
+    return clusters;
+}
+
+function protoIsoRender(chart) {
+    const lanes = document.getElementById('proto-iso-lanes');
+    if (!lanes || !iso15118Packets) return;
+    const status = document.getElementById('proto-iso-status');
+    if (!protoData.iso15118_correlation_available) {
+        lanes.replaceChildren();
+        status.textContent = T.iso15118_clock_invalid;
+        return;
+    }
+    const {min, max} = chart.scales.x;
+    const {left, right} = chart.chartArea;
+    const signature = [min, max, left, right, iso15118Packets.length, protoIsoSelected].join(',');
+    if (signature === protoIsoSignature) return;
+    protoIsoSignature = signature;
+    lanes.replaceChildren();
+    const rows = ['SLAC / HomePlug', 'TCP / TLS', 'V2G', T.iso15118_other].map(label => {
+        const row = document.createElement('div');
+        row.className = 'proto-iso-lane';
+        row.style.marginLeft = left + 'px';
+        row.style.width = Math.max(0, right - left) + 'px';
+        const name = document.createElement('span');
+        name.className = 'proto-iso-lane-label';
+        name.textContent = label;
+        row.appendChild(name);
+        lanes.appendChild(row);
+        return row;
+    });
+    const clusters = protoIsoClusters(protoIsoTimes, iso15118Packets, min, max, right - left);
+    let visible = 0;
+    clusters.forEach(({lane, pixel, indices}) => {
+        visible += indices.length;
+        const index = indices[0];
+        const packet = iso15118Packets[index];
+        const button = document.createElement('button');
+        button.className = 'proto-iso-marker ' + iso15118ProtoClass(packet[4]);
+        if (indices.includes(protoIsoSelected)) button.classList.add('proto-iso-active');
+        button.style.left = pixel + 'px';
+        button.textContent = indices.length > 1 ? String(indices.length) : '•';
+        button.title = indices.length > 1
+            ? `${indices.length} ${T.iso15118_packets}: ${protoFormatTime(protoIsoTimes[index])} – ${protoFormatTime(protoIsoTimes[indices[indices.length - 1]])}`
+            : `#${packet[0]} · ${protoFormatTime(protoIsoTimes[index])} · ${packet[4]} · ${packet[6]}`;
+        button.setAttribute('aria-label', button.title);
+        button.addEventListener('click', () => protoIsoOpen(indices));
+        button.addEventListener('mouseenter', () => { protoIsoHover = index; chart.draw(); });
+        button.addEventListener('mouseleave', () => { protoIsoHover = null; chart.draw(); });
+        rows[lane].appendChild(button);
+    });
+    const range = protoIsoTimes.length ? T.iso15118_range
+        .replace('${start}', protoFormatTime(protoIsoTimes[0]))
+        .replace('${end}', protoFormatTime(protoIsoTimes[protoIsoTimes.length - 1])) : '';
+    status.textContent = [range, T.iso15118_visible.replace('${visible}', visible).replace('${total}', protoIsoTimes.length)]
+        .filter(Boolean).join(' · ');
+}
+
+function protoIsoFit() {
+    if (!protoChart || !protoIsoTimes.length || !protoData.iso15118_correlation_available) return;
+    const samples = protoData.sample_times_ms;
+    const min = Math.min(samples[0], protoIsoTimes[0]);
+    const max = Math.max(samples[samples.length - 1], protoIsoTimes[protoIsoTimes.length - 1]);
+    protoChart.zoomScale('x', {min, max}, 'none');
+    _saveZoomToHash(protoChart, 'zms', 'zy');
+}
+
+function protoIsoOpen(indices) {
+    const select = document.getElementById('proto-iso-packets');
+    select.replaceChildren();
+    indices.forEach(index => {
+        const pkt = iso15118Packets[index];
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `#${pkt[0]} · ${protoFormatTime(protoIsoTimes[index])} · ${pkt[4]} · ${pkt[6]}`;
+        select.appendChild(option);
+    });
+    document.getElementById('proto-iso-detail').classList.remove('d-none');
+    protoIsoSelect(indices[0]);
+}
+
+function protoIsoSelect(index) {
+    protoIsoSelected = index;
+    protoIsoHover = null;
+    const pkt = iso15118Packets[index];
+    document.getElementById('proto-iso-summary').textContent =
+        `#${pkt[0]} · ${protoFormatTime(protoIsoTimes[index])} · ${pkt[2]} → ${pkt[3]} · ${pkt[4]} · ${pkt[6]}`;
+    document.getElementById('proto-iso-tree').replaceChildren(renderIso15118Tree(pkt[7], true, false));
+    protoChart.draw();
+}
+
+function protoIsoClear() {
+    protoIsoSelected = null;
+    protoIsoHover = null;
+    document.getElementById('proto-iso-detail').classList.add('d-none');
+    protoChart.draw();
+}
+
+function protoIsoShowPacket(index) {
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('chart-tab')).show();
+    const time = protoIsoTimes[index];
+    if (time < protoChart.scales.x.min || time > protoChart.scales.x.max) {
+        protoChart.zoomScale('x', {min: Math.max(0, time - 5000), max: time + 5000}, 'none');
+        _saveZoomToHash(protoChart, 'zms', 'zy');
+    }
+    protoIsoOpen([index]);
+    document.getElementById('proto-iso-detail').scrollIntoView({block: 'nearest'});
 }
 
 function vislog_report(data) {
@@ -1041,6 +1240,16 @@ function initIso15118PacketList(snapshot) {
             iso15118Packets = d.packets;
             iso15118HasBootEpoch = d.has_boot_epoch;
             iso15118TzOffset = d.tz_offset || 0;
+            if (protoData) {
+                // Subtract the exact millisecond offset used by the pcap writer.
+                protoIsoTimes = d.packets.map(pkt => Math.round(pkt[1] * 1000) - d.boot_epoch_ms);
+                if (protoIsoTimes.some(t => !Number.isFinite(t) || t < 0) ||
+                    protoIsoTimes.some((t, i) => i > 0 && t < protoIsoTimes[i - 1])) {
+                    protoData.iso15118_correlation_available = false;
+                }
+                document.getElementById('proto-iso-fit').disabled = !protoData.iso15118_correlation_available || !protoIsoTimes.length;
+                protoChart.draw();
+            }
             statusEl.classList.add('d-none');
             listEl.classList.remove('d-none');
 
@@ -1058,6 +1267,8 @@ function initIso15118PacketList(snapshot) {
         .catch(e => {
             console.error('iso15118 packet list failed:', e);
             statusEl.textContent = T.iso15118_load_failed;
+            const timelineStatus = document.getElementById('proto-iso-status');
+            if (timelineStatus) timelineStatus.textContent = T.iso15118_load_failed;
         });
 }
 
@@ -1149,6 +1360,13 @@ function toggleIso15118Detail(row) {
     detailRow.className = 'iso15118-detail-row';
     const td = document.createElement('td');
     td.colSpan = 7;
+    if (protoData && protoData.iso15118_correlation_available) {
+        const button = document.createElement('button');
+        button.className = 'btn btn-sm btn-outline-secondary mb-2';
+        button.textContent = T.iso15118_show_chart;
+        button.addEventListener('click', () => protoIsoShowPacket(Number(row.dataset.idx)));
+        td.appendChild(button);
+    }
     td.appendChild(renderIso15118Tree(pkt[7], true, false));
     detailRow.appendChild(td);
     row.after(detailRow);

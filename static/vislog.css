@@ -661,6 +661,39 @@ footer a:hover {
 }
 
 /* Wireshark-like protocol row coloring */
+.proto-iso-lanes { overflow: hidden; }
+.proto-iso-lane {
+  position: relative;
+  height: 48px;
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--bs-tertiary-bg);
+}
+.proto-iso-lane-label {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  font-size: 10px;
+  color: var(--bs-secondary-color);
+}
+.proto-iso-marker {
+  position: absolute;
+  top: 18px;
+  transform: translateX(-50%);
+  min-width: 18px;
+  height: 26px;
+  padding: 0 3px;
+  border: 1px solid var(--bs-secondary-color);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--bs-body-color);
+  background: var(--bs-secondary-bg);
+}
+.proto-iso-marker:hover, .proto-iso-marker:focus-visible, .proto-iso-active {
+  outline: 2px solid var(--bs-primary);
+  z-index: 1;
+}
+#proto-iso-packets { flex: 1; min-width: 180px; width: 0; }
+#proto-iso-tree { max-height: 450px; overflow: auto; }
 .iso15118-proto-hpav   { background: rgba(160, 120, 255, 0.14); }
 .iso15118-proto-v2g    { background: rgba( 60, 200, 120, 0.14); }
 .iso15118-proto-tls    { background: rgba(230, 180,  60, 0.16); }

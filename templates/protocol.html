@@ -109,6 +109,26 @@
             <div class="chart-container p-2">
                 <canvas id="proto-chart"></canvas>
             </div>
+            {% if data.iso15118_ll_available %}
+            <section class="p-2 pt-0" aria-label="{{ t.iso15118_timeline }}">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <button id="proto-iso-fit" class="btn btn-sm btn-outline-secondary ms-auto" onclick="protoIsoFit()" disabled>{{ t.iso15118_fit }}</button>
+                </div>
+                <div id="proto-iso-status" class="small text-body-secondary" role="status">{{ t.iso15118_loading }}</div>
+                <div id="proto-iso-lanes" class="proto-iso-lanes"></div>
+                <div id="proto-iso-detail" class="card mt-3 d-none">
+                    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+                        <label for="proto-iso-packets">{{ t.iso15118_packets }}</label>
+                        <select id="proto-iso-packets" class="form-select form-select-sm" onchange="protoIsoSelect(Number(this.value))"></select>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="protoIsoClear()">{{ t.iso15118_clear }}</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="proto-iso-summary" class="mb-2"></div>
+                        <div id="proto-iso-tree"></div>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
         </div>
 
         <!-- Config / Log Tabs -->

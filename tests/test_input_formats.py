@@ -1,4 +1,7 @@
-"""Production input/render tests using only synthetic diagnostic data."""
+"""Production input/render tests using only synthetic diagnostic data.
+
+Run from the repository root: python -m unittest tests.test_input_formats
+"""
 
 import base64
 import datetime
@@ -376,6 +379,9 @@ class FlaskInputFormatTests(unittest.TestCase):
                 self.assertTrue(data['iso15118_ll_available'])
                 self.assertEqual(data['trace_modules']['iso15118_ll'], '')
                 self.assertEqual(data['all_column_data']['allowed_charging_current'], [6000, 16000])
+                self.assertEqual(data['sample_times_ms'], [1000, 2000])
+                self.assertTrue(data['numeric_time_axis'])
+                self.assertIn('id="proto-iso-detail"', html)
                 self.assertEqual(data['before_protocol_json']['fixture'], 'before')
                 self.assertEqual(data['after_protocol_json']['fixture'], 'after')
                 self.firmware.assert_called_with(data['report_json'])
@@ -549,6 +555,8 @@ class FlaskInputFormatTests(unittest.TestCase):
                         payload = json.loads(gzip.decompress(response.data)) if repeat else response.get_json()
                         self.assertEqual(payload, {
                             'has_boot_epoch': True, 'tz_offset': offset,
+                            'boot_epoch_ms': int(main.report_boot_epoch(
+                                snapshot_fixture('clock', 1 if expected == 'pre-pcap' else 2)['report_json']) * 1000),
                             'packets': [{'fixture': expected}],
                         })
                         if repeat:
@@ -572,6 +580,57 @@ class FlaskInputFormatTests(unittest.TestCase):
         self.assertEqual(implicit.status_code, 200)
         self.assertEqual(warm_explicit.status_code, 400)
         self.assertEqual(explicit.status_code, 400)
+
+
+class CorrelationTests(unittest.TestCase):
+    def metadata(self, times, before=None, after=None):
+        snapshots = {}
+        if before is not None:
+            snapshots['pre'] = {'report_json': before}
+        if after is not None:
+            snapshots['post'] = {'report_json': after}
+        return main.protocol_clock_metadata({'snapshots': snapshots}, {
+            'sample_times_ms': times, 'report_json': after or before or {},
+        })
+
+    def test_irregular_samples_correlate_without_rtc(self):
+        data = self.metadata([1000, 1051, 1051, 1987, 9000], {}, {})
+        self.assertTrue(data['numeric_time_axis'])
+        self.assertTrue(data['iso15118_correlation_available'])
+        self.assertIsNone(data['time_offset_ms'])
+
+    def test_ambiguous_sample_clocks_disable_correlation(self):
+        for times in ([], [1000, None], [2000, 1000], [-1, 10], [4294967290, 5]):
+            with self.subTest(times=times):
+                data = self.metadata(times)
+                self.assertFalse(data['numeric_time_axis'])
+                self.assertFalse(data['iso15118_correlation_available'])
+
+    def test_snapshot_reboot_disables_correlation(self):
+        self.assertFalse(self.metadata([100, 200], {'uptime': 1000}, {'uptime': 500})['iso15118_correlation_available'])
+        # Even when uptime after the reboot has caught up with the old uptime.
+        self.assertFalse(self.metadata([100, 200],
+            {'uptime': 50, 'info/last_boots': [{'boot_count': 1}]},
+            {'uptime': 300, 'info/last_boots': [{'boot_count': 2}]})['iso15118_correlation_available'])
+
+    def test_wall_time_uses_selected_report_clock_not_last_event(self):
+        before = snapshot_fixture('before')['report_json']
+        after = snapshot_fixture('after', 2)['report_json']
+        data = self.metadata([1000, 1500, 2000], before, after)
+        self.assertEqual(data['time_offset_ms'], int(main.report_boot_epoch(after) * 1000) + 3600000)
+
+    def test_pcap_clock_round_trip_retains_millisecond_uptime(self):
+        import struct
+        frame = '02000000000102000000000288e1' + '00' * 46
+        for epoch in (0, 1767268798.7499):
+            pcap = main.iso15118_ll_to_pcap(f'1051 {frame}\n1987 {frame}', epoch)
+            position = 24
+            recovered = []
+            while position < len(pcap):
+                seconds, micros, length, _ = struct.unpack_from('<IIII', pcap, position)
+                recovered.append(round((seconds + micros / 1000000) * 1000) - int(epoch * 1000))
+                position += 16 + length
+            self.assertEqual(recovered, [1051, 1987])
 
 
 if __name__ == '__main__':
