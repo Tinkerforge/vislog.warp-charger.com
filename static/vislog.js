@@ -42,22 +42,17 @@ function updateThemeIcon(theme) {
 })();
 
 // ---------------------------------------------------------------------------
-// Collapsible chart headers – toggle collapse on click, but ignore clicks
-// that land on buttons, inputs, labels or other controls in the header.
+// Signal pickers: focus search on opening and close when keyboard focus leaves.
 // ---------------------------------------------------------------------------
-document.addEventListener('click', function(e) {
-    const header = e.target.closest('.chart-collapse-header');
-    if (!header) return;
-    // Ignore clicks inside the controls area
-    if (e.target.closest('.chart-header-controls')) return;
-    const targetId = header.getAttribute('aria-controls');
-    const body = document.getElementById(targetId);
-    if (!body) return;
-    const collapse = bootstrap.Collapse.getOrCreateInstance(body, {toggle: false});
-    collapse.toggle();
-    // Update aria-expanded
-    const expanded = header.getAttribute('aria-expanded') === 'true';
-    header.setAttribute('aria-expanded', String(!expanded));
+document.addEventListener('shown.bs.dropdown', function(e) {
+    e.target.closest('.chart-toolbar')?.querySelector('.chart-signal-search')?.focus();
+});
+
+document.addEventListener('focusout', function(e) {
+    const dropdown = e.target.closest('.chart-toolbar .dropdown');
+    if (dropdown && e.relatedTarget && !dropdown.contains(e.relatedTarget)) {
+        bootstrap.Dropdown.getInstance(dropdown.querySelector('[data-bs-toggle="dropdown"]'))?.hide();
+    }
 });
 
 // ---------------------------------------------------------------------------
@@ -90,7 +85,7 @@ function _updateTabLinks() {
 function _parseChartHash(colsKey, logKey) {
     const params = _hashParams();
     const colParam = params.get(colsKey);
-    const columns = colParam ? colParam.split(',').filter(Boolean) : null;
+    const columns = colParam !== null ? colParam.split(',').filter(Boolean) : null;
     const log = params.get(logKey) === '1';
     return { columns, log };
 }
@@ -104,11 +99,8 @@ function _updateChartHash(checkboxSelector, logCheckboxId, colsKey, logKey) {
     const useLog = logCb && logCb.checked;
 
     const params = _hashParams();
-    if (selected.length > 0) {
-        params.set(colsKey, selected.join(','));
-    } else {
-        params.delete(colsKey);
-    }
+    // An explicit empty selection must survive reloads and shared links.
+    params.set(colsKey, selected.join(','));
     if (useLog) {
         params.set(logKey, '1');
     } else {
@@ -377,6 +369,69 @@ function chartSelectAll(checkboxSelector, checked, renderFn) {
     document.querySelectorAll(checkboxSelector).forEach(cb => {
         cb.checked = checked;
     });
+    renderFn();
+}
+
+function initChartPicker(prefix, columns) {
+    const picker = document.getElementById(prefix + '-signal-picker');
+    if (!picker) return;
+    const indices = new Map(columns.map((column, index) => [column, index]));
+    picker.querySelectorAll('input[data-column]').forEach(cb => {
+        const label = cb.closest('label');
+        label.title = cb.dataset.column;
+        const dot = document.createElement('span');
+        dot.className = 'chart-signal-color';
+        dot.setAttribute('aria-hidden', 'true');
+        dot.style.backgroundColor = CHART_COLORS[indices.get(cb.dataset.column) % CHART_COLORS.length];
+        cb.after(dot);
+        const text = document.createElement('span');
+        text.className = 'chart-signal-label';
+        while (dot.nextSibling) text.appendChild(dot.nextSibling);
+        dot.after(text);
+    });
+    picker.querySelectorAll('.chart-column-group h6').forEach(heading => {
+        const count = document.createElement('span');
+        count.className = 'chart-group-count';
+        heading.appendChild(count);
+    });
+    updateChartPicker(prefix);
+}
+
+function updateChartPicker(prefix) {
+    const picker = document.getElementById(prefix + '-signal-picker');
+    if (!picker) return;
+    const search = document.getElementById(prefix + '-signal-search');
+    const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const selectedOnly = document.getElementById(prefix + '-selected-only').checked;
+    let selected = 0;
+    let visible = 0;
+    picker.querySelectorAll('.chart-column-group').forEach(group => {
+        let groupSelected = 0;
+        let groupVisible = 0;
+        const inputs = group.querySelectorAll('input[data-column]');
+        inputs.forEach(cb => {
+            const label = cb.closest('label');
+            const haystack = (cb.dataset.column + ' ' + label.textContent).toLocaleLowerCase();
+            label.hidden = (selectedOnly && !cb.checked) || !terms.every(term => haystack.includes(term));
+            if (label.hidden && label.contains(document.activeElement)) search.focus();
+            if (!label.hidden) groupVisible++;
+            if (cb.checked) groupSelected++;
+        });
+        group.hidden = groupVisible === 0;
+        const count = group.querySelector('.chart-group-count');
+        if (count) count.textContent = ` ${groupSelected}/${inputs.length}`;
+        selected += groupSelected;
+        visible += groupVisible;
+    });
+    picker.querySelector('[data-signal-count]').textContent = selected;
+    picker.querySelector('[data-signal-empty]').hidden = visible !== 0;
+}
+
+function chartRestoreDefaults(prefix, renderFn) {
+    const picker = document.getElementById(prefix + '-signal-picker');
+    picker.querySelectorAll('input[data-column]').forEach(cb => { cb.checked = cb.defaultChecked; });
+    document.getElementById(prefix + '-signal-search').value = '';
+    document.getElementById(prefix + '-selected-only').checked = false;
     renderFn();
 }
 
@@ -1189,6 +1244,7 @@ function initProtocolChart(data) {
         }
     }
 
+    initChartPicker('proto', data.column_metadata.map(col => col.name));
     // Render chart with initial selection
     protoRenderChart();
 }
@@ -1203,6 +1259,7 @@ function _protoUpdateHash() {
 
 function protoRenderChart() {
     if (!protoData) return;
+    updateChartPicker('proto');
 
     // Gather selected columns
     const selected = [];
@@ -1212,8 +1269,8 @@ function protoRenderChart() {
 
     // Build column label lookup from metadata
     const labelLookup = {};
-    protoData.column_metadata.forEach(col => {
-        labelLookup[col.name] = col.label;
+    protoData.column_metadata.forEach((col, index) => {
+        labelLookup[col.name] = {label: col.label, color: index};
     });
 
     // Log / linear Y-axis
@@ -1222,7 +1279,6 @@ function protoRenderChart() {
 
     // Build datasets
     const datasets = [];
-    let colorIdx = 0;
 
     selected.forEach(colName => {
         const rawData = protoData.all_column_data[colName];
@@ -1234,7 +1290,7 @@ function protoRenderChart() {
 
         const points = protoData.numeric_time_axis
             ? chartData.map((y, i) => ({x: protoData.sample_times_ms[i], y})) : chartData;
-        datasets.push(_chartDataset(labelLookup[colName] || colName, points, colorIdx++));
+        datasets.push(_chartDataset(labelLookup[colName].label, points, labelLookup[colName].color));
     });
 
     protoChart = _createTimeSeriesChart({
@@ -1841,6 +1897,7 @@ function initCmChart(data) {
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.dataset.column = col.key;
+            cb.defaultChecked = defaultKeys.has(col.key);
             cb.checked = selectedKeys.has(col.key);
             cb.addEventListener('change', renderCmChart);
             label.appendChild(cb);
@@ -1859,6 +1916,7 @@ function initCmChart(data) {
         if (logCb) logCb.checked = true;
     }
 
+    initChartPicker('cm', cmData.columns.map(col => col.key));
     // Auto-render with defaults/restored state
     renderCmChart();
 }
@@ -1922,6 +1980,7 @@ function cmResetZoom() {
 
 function renderCmChart() {
     if (!cmData) return;
+    updateChartPicker('cm');
 
     // Gather selected columns
     const selected = [];
@@ -1961,10 +2020,8 @@ function renderCmChart() {
 
     // Build datasets
     const datasets = [];
-    let colorIdx = 0;
-
     const colLookup = {};
-    cmData.columns.forEach(c => { colLookup[c.key] = c; });
+    cmData.columns.forEach((c, index) => { colLookup[c.key] = {...c, color: index}; });
 
     selected.forEach(key => {
         const colMeta = colLookup[key];
@@ -1981,7 +2038,7 @@ function renderCmChart() {
             return;
         }
 
-        datasets.push(_chartDataset(colMeta.label, data, colorIdx++));
+        datasets.push(_chartDataset(colMeta.label, data, colMeta.color));
     });
 
     // Log / linear Y-axis

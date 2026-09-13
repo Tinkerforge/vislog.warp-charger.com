@@ -14,7 +14,12 @@ TRANSLATIONS = {
         'upload_hint': 'Klicken oder Datei hierher ziehen',
 
         # --- protocol column selector ---
-        'select_columns_heading': 'Spalten ausw\u00e4hlen',
+        'select_columns_heading': 'Signale',
+        'signal_search': 'Signal suchen …',
+        'signal_selected_only': 'Nur ausgewählte',
+        'signal_no_matches': 'Keine passenden Signale.',
+        'signal_defaults': 'Standard wiederherstellen',
+        'signal_clear': 'Auswahl leeren',
         'select_all': 'Alle ausw\u00e4hlen',
         'deselect_all': 'Alle abw\u00e4hlen',
 
@@ -249,7 +254,12 @@ TRANSLATIONS = {
         'upload_hint': 'Click or drag file here',
 
         # --- protocol column selector ---
-        'select_columns_heading': 'Select columns',
+        'select_columns_heading': 'Signals',
+        'signal_search': 'Search signals …',
+        'signal_selected_only': 'Selected only',
+        'signal_no_matches': 'No matching signals.',
+        'signal_defaults': 'Restore defaults',
+        'signal_clear': 'Clear selection',
         'select_all': 'Select all',
         'deselect_all': 'Deselect all',
 

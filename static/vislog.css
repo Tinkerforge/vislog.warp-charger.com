@@ -191,16 +191,37 @@ body {
 /* --------------------------------------------------------------------------
    Chart Column Selection (shared by protocol + CM charts)
    -------------------------------------------------------------------------- */
-.chart-columns-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  max-height: 400px;
+.chart-toolbar {
+  position: relative;
+}
+
+.chart-signal-panel {
+  left: 0;
+  top: 100%;
+  width: min(48rem, 100%);
+  margin-top: 0.25rem;
+}
+
+.chart-signal-search {
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 0;
+}
+
+.chart-signal-list {
+  max-height: min(22rem, 45dvh);
   overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chart-columns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.75rem;
 }
 
 .chart-column-group {
-  min-width: 150px;
+  min-width: 0;
 }
 
 .chart-column-group h6 {
@@ -213,15 +234,42 @@ body {
 }
 
 .chart-column-group label {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
   font-size: 0.8rem;
   cursor: pointer;
-  padding: 0.05rem 0;
-  white-space: nowrap;
+  padding: 0.2rem 0.25rem;
+  border-radius: 0.2rem;
+}
+
+.chart-column-group[hidden],
+.chart-column-group label[hidden] {
+  display: none;
+}
+
+.chart-signal-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chart-signal-color {
+  flex: 0 0 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.chart-group-count {
+  font-weight: normal;
+  letter-spacing: 0;
 }
 
 .chart-column-group label:hover {
-  color: var(--bs-primary);
+  background: var(--bs-tertiary-bg);
+}
+
+.chart-column-group label:focus-within {
+  outline: 1px solid var(--bs-primary);
 }
 
 /* Inline (i) info buttons in chart column selectors */
@@ -241,30 +289,12 @@ body {
 }
 
 .chart-column-group input[type="checkbox"] {
-  margin-right: 0.35rem;
-}
-
-/* Collapsible chart header */
-.chart-collapse-header {
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.15s ease;
-}
-
-.chart-collapse-header:hover {
-  background-color: var(--bs-tertiary-bg);
-}
-
-.chart-collapse-header .chart-header-controls {
-  cursor: default;
+  flex-shrink: 0;
+  margin: 0;
 }
 
 .collapse-chevron {
   transition: transform 0.2s ease;
-}
-
-.chart-collapse-header[aria-expanded="false"] .collapse-chevron {
-  transform: rotate(-90deg);
 }
 
 /* --------------------------------------------------------------------------
