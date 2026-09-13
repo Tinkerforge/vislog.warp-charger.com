@@ -40,6 +40,31 @@
   --search-current-bg: rgba(255, 193, 7, 0.5);
 }
 
+.firmware-notice {
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-left: 3px solid var(--bs-alert-color);
+  border-radius: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--bs-body-color);
+}
+
+.firmware-notice > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.firmware-notice > .bi {
+  color: var(--bs-alert-color);
+  flex-shrink: 0;
+}
+
+.firmware-notice .btn-close {
+  flex-shrink: 0;
+  padding: 0.25rem;
+}
+
 /* Shared event log viewer */
 .event-log-toolbar,
 .event-log-search-controls,

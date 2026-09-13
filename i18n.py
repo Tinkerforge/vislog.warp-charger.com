@@ -163,6 +163,7 @@ TRANSLATIONS = {
 
         # --- common ---
         'toggle_theme': 'Dunkel-/Hellmodus umschalten',
+        'close_notice': 'Hinweis schließen',
         'switch_language': 'Switch to English',
 
         # --- JSON viewer (used in JS) ---
@@ -415,6 +416,7 @@ TRANSLATIONS = {
 
         # --- common ---
         'toggle_theme': 'Toggle dark/light mode',
+        'close_notice': 'Dismiss notice',
         'switch_language': 'Auf Deutsch wechseln',
 
         # --- JSON viewer (used in JS) ---

@@ -9,20 +9,22 @@
     {% endfor %}
     {% if show_firmware and data.firmware_check %}
     {% if data.firmware_check.level == 'danger' %}
-    <div class="alert alert-danger d-flex align-items-center gap-2 fs-5 mb-3" role="alert">
+    <div class="alert alert-danger firmware-notice d-flex align-items-start gap-2 mb-0" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
         <div>
             <strong>{{ t.warning_label }}</strong>
             {{ t.firmware_outdated_warning.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
         </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="{{ t.close_notice }}" title="{{ t.close_notice }}"></button>
     </div>
     {% else %}
-    <div class="alert alert-info d-flex align-items-center gap-2 mb-3" role="alert">
+    <div class="alert alert-info firmware-notice d-flex align-items-start gap-2 mb-0" role="alert">
         <i class="bi bi-info-circle-fill"></i>
         <div>
             <strong>{{ t.hint_label }}</strong>
             {{ t.firmware_nonrelease_info.replace('${reported}', data.firmware_check.reported).replace('${latest}', data.firmware_check.latest) }}
         </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="{{ t.close_notice }}" title="{{ t.close_notice }}"></button>
     </div>
     {% endif %}
     {% endif %}
