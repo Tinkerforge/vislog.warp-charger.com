@@ -241,8 +241,8 @@ body {
   font-weight: 600;
 }
 
-.nav-tabs-vislog .btn-lang,
-.nav-tabs-vislog .btn-theme {
+.vislog-navigation .btn-lang,
+.vislog-navigation .btn-theme {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -433,12 +433,83 @@ body {
 /* --------------------------------------------------------------------------
    Tab Navigation (Bootstrap nav-tabs override)
    -------------------------------------------------------------------------- */
-.nav-tabs-vislog {
+.vislog-navigation {
+  display: flex;
+  align-items: stretch;
   background-color: var(--bs-secondary-bg);
   border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+  border-bottom: 1px solid var(--bs-border-color);
+}
+
+.nav-tabs-vislog {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border-bottom: 0;
+  scrollbar-width: thin;
+}
+
+.nav-tabs-vislog > .nav-item {
+  flex-shrink: 0;
+}
+
+.vislog-navigation-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  border-left: 1px solid var(--bs-border-color);
+}
+
+.trace-navigation {
+  position: relative;
+}
+
+.trace-navigation .dropdown-menu {
+  max-height: min(28rem, 70dvh);
+  max-width: calc(100vw - 1rem);
+  overflow: auto;
+  font-size: 0.875rem;
+}
+
+.trace-navigation .dropdown-item {
+  color: var(--bs-body-color);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.trace-navigation .dropdown-item.active {
+  color: var(--bs-emphasis-color);
+  background: var(--bs-primary-bg-subtle);
+  font-weight: 500;
+}
+
+#traces-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(22rem, calc(100vw - 6rem));
+}
+
+[data-traces-label] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 575.98px) {
+  .nav-tabs-vislog .nav-link {
+    padding-inline: 0.75rem;
+  }
+
+  .vislog-navigation-actions {
+    gap: 0.25rem;
+    padding-inline: 0.25rem;
+  }
 }
 
 .nav-tabs-vislog .nav-link {
+  white-space: nowrap;
   border-radius: 0;
   border: none;
   border-bottom: 2px solid transparent;

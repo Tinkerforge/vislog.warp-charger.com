@@ -22,6 +22,7 @@
     {% endif %}
 
     <!-- Tabs -->
+    <div class="vislog-navigation">
     <ul class="nav nav-tabs nav-tabs-vislog" role="tablist">
         <li class="nav-item" role="presentation">
             <a class="nav-link active" id="chart-tab" href="#tab=chart-tab" data-bs-toggle="tab" data-bs-target="#proto-chart-pane" role="tab">
@@ -41,7 +42,8 @@
         {% if data.has_embedded_reports %}
         {{ report_feature_tabs(data, t) }}
         {% endif %}
-        <li class="nav-item ms-auto d-flex align-items-center gap-2 pe-2">
+    </ul>
+        <div class="vislog-navigation-actions">
             <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
                 {{ 'EN' if lang == 'de' else 'DE' }}
             </a>
@@ -49,8 +51,8 @@
                 <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
                 <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
             </button>
-        </li>
-    </ul>
+        </div>
+    </div>
 
     <div class="tab-content border border-top-0 rounded-bottom">
         <!-- Chart Tab -->

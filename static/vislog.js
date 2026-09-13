@@ -75,7 +75,7 @@ function _hashSet(key, value) {
 }
 
 function _updateTabLinks() {
-    document.querySelectorAll('.nav-tabs-vislog .nav-link[data-bs-target]').forEach(link => {
+    document.querySelectorAll('.nav-tabs-vislog [data-bs-toggle="tab"]').forEach(link => {
         const params = _hashParams();
         params.set('tab', link.id);
         link.href = location.pathname + location.search + '#' + params.toString();
@@ -157,7 +157,31 @@ function _clearZoomHash(xKey, yKey) {
 document.addEventListener('shown.bs.tab', function(e) {
     const tabId = e.target.id;  // e.g. "chart-tab", "config-tab"
     if (tabId) _hashSet('tab', tabId);
+    updateTraceNavigation();
 });
+
+function updateTraceNavigation() {
+    const nav = document.querySelector('.nav-tabs-vislog');
+    if (!nav) return;
+    const selected = nav.querySelector('[data-bs-toggle="tab"].active');
+    const toggle = document.getElementById('traces-toggle');
+    const trace = selected?.hasAttribute('data-trace-label');
+    if (toggle) {
+        const label = trace ? `${T.tab_traces}: ${selected.dataset.traceLabel}` : T.tab_traces;
+        toggle.querySelector('[data-traces-label]').textContent = label;
+        toggle.title = label;
+        toggle.classList.toggle('active', !!trace);
+        toggle.setAttribute('aria-expanded', document.getElementById('traces-menu').classList.contains('show'));
+        toggle.tabIndex = 0;
+    }
+    const visible = trace ? toggle : selected;
+    if (visible) {
+        const bounds = nav.getBoundingClientRect();
+        const item = visible.getBoundingClientRect();
+        if (item.left < bounds.left) nav.scrollLeft += item.left - bounds.left;
+        else if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     // Migrate links to the former top-level configuration and event-log tabs.
@@ -175,13 +199,50 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     _updateTabLinks();
 
-    document.querySelectorAll('.nav-tabs-vislog .nav-link[data-bs-target]').forEach(function(link) {
+    document.querySelectorAll('.nav-tabs-vislog [data-bs-toggle="tab"]').forEach(function(link) {
         link.addEventListener('click', function(e) {
             e.stopPropagation();
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
             bootstrap.Tab.getOrCreateInstance(link).show();
+            const toggle = document.getElementById('traces-toggle');
+            if (toggle) bootstrap.Dropdown.getInstance(toggle)?.hide();
+            if (link.hasAttribute('data-trace-label')) toggle.focus({preventScroll: true});
         });
+    });
+
+    const navigation = document.querySelector('.nav-tabs-vislog');
+    navigation?.addEventListener('keydown', function(e) {
+        const inMenu = e.target.closest('#traces-menu');
+        const toggle = document.getElementById('traces-toggle');
+        if (inMenu) {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(e.key)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const items = [...inMenu.querySelectorAll('[data-bs-toggle="tab"]')];
+            const index = items.indexOf(e.target);
+            if (e.key === 'Escape') {
+                bootstrap.Dropdown.getInstance(toggle)?.hide();
+                toggle.focus({preventScroll: true});
+            } else if (e.key === 'Enter' || e.key === ' ') e.target.click();
+            else items[e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+                : (index + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length]?.focus();
+        } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+            e.preventDefault();
+            e.stopPropagation();
+            const items = [...navigation.querySelectorAll(':scope > .nav-item > .nav-link')];
+            const index = items.indexOf(e.target);
+            const next = items[e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1
+                : (index + (e.key === 'ArrowLeft' ? -1 : 1) + items.length) % items.length];
+            next?.focus();
+            if (next?.matches('[data-bs-toggle="tab"]')) next.click();
+        }
+    }, true);
+    navigation?.addEventListener('focusout', function(e) {
+        const dropdown = e.target.closest('.trace-navigation');
+        if (dropdown && e.relatedTarget && !dropdown.contains(e.relatedTarget)) {
+            bootstrap.Dropdown.getInstance(document.getElementById('traces-toggle'))?.hide();
+        }
     });
 
     const params = _hashParams();
@@ -193,6 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tab.show();
         }
     }
+    updateTraceNavigation();
 
     // Preserve query string + hash when switching language
     document.querySelectorAll('.btn-lang').forEach(function(link) {
@@ -201,6 +263,7 @@ document.addEventListener('DOMContentLoaded', function() {
             window.location.href = link.getAttribute('href') + location.search + location.hash;
         });
     });
+    if (navigation) window.addEventListener('resize', updateTraceNavigation);
 });
 
 
@@ -1187,6 +1250,13 @@ function initProtocolEventLog(data) {
     initEventLogViewer(container, sections, [...merged.before, ...merged.after].join('\n'));
 }
 
+function initTextLogViewer(container, text) {
+    if (!container) return;
+    text = text || '';
+    initEventLogViewer(container, text ? [{lines: text.replace(/\r\n?/g, '\n').split('\n')}]
+        : [{note: T.event_log_empty}], text);
+}
+
 function initEventLogViewer(container, sections, copyText) {
     const viewer = container.closest('.event-log-viewer');
     const control = name => viewer.querySelector(`[data-log-${name}]`);
@@ -1965,12 +2035,7 @@ function vislog_report(data) {
     };
     if (document.getElementById('report-json')) make_jsonview(data.report_json, '#report-json', jsonviewOpts);
 
-    const reportLog = document.getElementById('report-log-text');
-    if (reportLog) {
-        const text = data.report_log || '';
-        initEventLogViewer(reportLog, text ? [{lines: text.replace(/\r\n?/g, '\n').split('\n')}]
-            : [{note: T.event_log_empty}], text);
-    }
+    initTextLogViewer(document.getElementById('report-log-text'), data.report_log);
 
     initReportFeatures(data);
 }
@@ -1981,19 +2046,12 @@ function renderReportCharts() {
 }
 
 function initReportFeatures(data) {
-    // Only set trace text if the element exists (might not if no remaining trace content)
-    const traceText = document.getElementById('report-trace-text');
-    if (traceText) {
-        traceText.value = data.report_trace;
-    }
+    initTextLogViewer(document.getElementById('report-trace-text'), data.report_trace);
 
-    // Populate module trace textareas (filled via JS to avoid HTML injection in <textarea>)
+    // Decoded modules may have a specialized viewer instead of a raw log.
     if (data.trace_modules) {
         for (const [moduleName, moduleContent] of Object.entries(data.trace_modules)) {
-            const el = document.getElementById('trace-' + moduleName + '-text');
-            if (el) {
-                el.value = moduleContent;
-            }
+            initTextLogViewer(document.getElementById('trace-' + moduleName + '-text'), moduleContent);
         }
     }
 

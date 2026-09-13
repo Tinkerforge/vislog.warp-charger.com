@@ -32,7 +32,7 @@
 </div>
 {% endmacro %}
 
-{% macro event_log_viewer(t, content_id) %}
+{% macro event_log_viewer(t, content_id, label=none) %}
 <div class="event-log-viewer">
     <div class="event-log-toolbar mb-2">
         <div class="event-log-search-controls">
@@ -51,6 +51,6 @@
             <span class="small" data-log-copy-status role="status" aria-live="polite"></span>
         </div>
     </div>
-    <div id="{{ content_id }}" class="event-log-content border rounded is-wrapped" tabindex="0" role="region" aria-label="{{ t.tab_event_log }}"></div>
+    <div id="{{ content_id }}" class="event-log-content border rounded is-wrapped" tabindex="0" role="region" aria-label="{{ label or t.tab_event_log }}"></div>
 </div>
 {% endmacro %}

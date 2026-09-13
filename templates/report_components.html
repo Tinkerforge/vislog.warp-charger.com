@@ -1,4 +1,4 @@
-{% from "macros.html" import chart_column_card %}
+{% from "macros.html" import chart_column_card, event_log_viewer %}
 
 {% macro report_notices(data, t, show_firmware=true) %}
     {% for warning in data.warnings %}
@@ -36,20 +36,31 @@
             </a>
         </li>
         {% endif %}
-        {% if data.report_trace %}
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" id="trace-tab" href="#tab=trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" role="tab">
-                <i class="bi bi-bug"></i> {{ t.tab_trace_log }}
-            </a>
+        {% if data.report_trace or data.trace_modules %}
+        {# Bootstrap Tab's .dropdown handling opens menus on tab activation; manage this menu independently. #}
+        <li class="nav-item trace-navigation" role="presentation">
+            <button type="button" class="nav-link dropdown-toggle" id="traces-toggle" data-bs-toggle="dropdown"
+                    data-bs-config='{"popperConfig":{"strategy":"fixed"}}' aria-expanded="false" aria-controls="traces-menu">
+                <i class="bi bi-code-square"></i> <span data-traces-label>{{ t.tab_traces }}</span>
+            </button>
+            <ul class="dropdown-menu" id="traces-menu" aria-labelledby="traces-toggle">
+                {% if data.report_trace %}
+                <li role="presentation">
+                    <a class="dropdown-item" id="trace-tab" href="#tab=trace-tab" data-bs-toggle="tab" data-bs-target="#report-trace" role="tab" data-trace-label="{{ t.tab_trace_log }}">
+                        <i class="bi bi-bug"></i> {{ t.tab_trace_log }}
+                    </a>
+                </li>
+                {% endif %}
+                {% for module_name, module_content in data.trace_modules.items() %}
+                <li role="presentation">
+                    <a class="dropdown-item" id="trace-{{ module_name }}-tab" href="#tab=trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" role="tab" data-trace-label="{{ module_name }}">
+                        <i class="bi bi-code-square"></i> {{ module_name }}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
         </li>
         {% endif %}
-        {% for module_name, module_content in data.trace_modules.items() %}
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" id="trace-{{ module_name }}-tab" href="#tab=trace-{{ module_name }}-tab" data-bs-toggle="tab" data-bs-target="#trace-{{ module_name }}" role="tab">
-                <i class="bi bi-code-square"></i> {{ module_name }}
-            </a>
-        </li>
-        {% endfor %}
         <li class="nav-item" role="presentation">
             <a class="nav-link" id="dump-tab" href="#tab=dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" role="tab">
                 <i class="bi bi-file-binary"></i> {{ t.tab_coredump }}
@@ -90,7 +101,7 @@
         {% endif %}
         {% if data.report_trace %}
         <div class="tab-pane fade p-3" id="report-trace" role="tabpanel">
-            <textarea id="report-trace-text" class="form-control log-textarea" rows="40" readonly></textarea>
+            {{ event_log_viewer(t, 'report-trace-text', t.tab_trace_log) }}
         </div>
         {% endif %}
         {% for module_name, module_content in data.trace_modules.items() %}
@@ -147,7 +158,7 @@
                 </div>
             </div>
             {% else %}
-            <textarea id="trace-{{ module_name }}-text" class="form-control log-textarea" rows="40" readonly></textarea>
+            {{ event_log_viewer(t, 'trace-' ~ module_name ~ '-text', t.tab_traces ~ ': ' ~ module_name) }}
             {% endif %}
         </div>
         {% endfor %}
