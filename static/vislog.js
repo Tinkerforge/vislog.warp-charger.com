@@ -282,6 +282,92 @@ const chartPresentationPlugin = {
     },
 };
 
+const chartLegendPlugin = {
+    id: 'htmlSignalLegend',
+    afterUpdate(chart, args, options) {
+        if (!chart.$legend) {
+            const legend = document.createElement('div');
+            legend.className = 'chart-signal-legend';
+            legend.setAttribute('role', 'group');
+            legend.setAttribute('aria-label', T.select_columns_heading);
+            chart.canvas.parentElement.after(legend);
+            chart.$legend = legend;
+        }
+        const legend = chart.$legend;
+        chart.data.datasets.forEach((dataset, index) => {
+            let button = legend.children[index];
+            if (!button) {
+                button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'chart-legend-signal';
+                const swatch = document.createElement('span');
+                swatch.className = 'chart-legend-swatch';
+                swatch.setAttribute('aria-hidden', 'true');
+                const label = document.createElement('span');
+                label.className = 'chart-legend-label';
+                button.append(swatch, label);
+                const highlight = () => {
+                    chart.$highlightedSignal = chart.isDatasetVisible(index) ? index : null;
+                    chart.draw();
+                };
+                const clear = () => { chart.$highlightedSignal = null; chart.draw(); };
+                button.addEventListener('mouseenter', highlight);
+                button.addEventListener('mouseleave', clear);
+                button.addEventListener('focus', highlight);
+                button.addEventListener('blur', clear);
+                button.addEventListener('click', () => {
+                    const visible = !chart.isDatasetVisible(index);
+                    chart.setDatasetVisibility(index, visible);
+                    chart.$highlightedSignal = null;
+                    chart.setActiveElements([]);
+                    chart.tooltip.setActiveElements([], {x: 0, y: 0});
+                    if (chart.$inspector) chart.$inspector.hidden = true;
+                    if (options.pickerPrefix) {
+                        const picker = document.getElementById(options.pickerPrefix + '-signal-picker');
+                        const checkbox = Array.from(picker.querySelectorAll('input[data-column]'))
+                            .find(cb => cb.dataset.column === chart.data.datasets[index].signalKey);
+                        if (checkbox) checkbox.checked = visible;
+                        updateChartPicker(options.pickerPrefix);
+                        if (options.pickerPrefix === 'proto') _protoUpdateHash();
+                        else _cmUpdateHash();
+                    }
+                    chart.update('none');
+                });
+                legend.appendChild(button);
+            }
+            button.firstChild.style.backgroundColor = dataset.borderColor;
+            button.lastChild.textContent = dataset.label;
+            button.title = dataset.label;
+            button.setAttribute('aria-pressed', String(chart.isDatasetVisible(index)));
+        });
+        while (legend.children.length > chart.data.datasets.length) legend.lastChild.remove();
+        legend.hidden = !chart.data.datasets.length;
+    },
+    beforeDatasetDraw(chart, {index}) {
+        chart.ctx.save();
+        // Preview removal: dim the hovered/focused signal, keeping others clear.
+        if (chart.$highlightedSignal === index) chart.ctx.globalAlpha = 0.2;
+    },
+    afterDatasetDraw(chart) {
+        chart.ctx.restore();
+    },
+    afterDestroy(chart) {
+        chart.$legend?.remove();
+    },
+};
+
+function chartInspectorLabel(dataset) {
+    const label = dataset.label || '';
+    // Only move explicit, recognized unit suffixes; descriptive parentheses and
+    // raw signal names are not reliable sources of units.
+    const match = /\s*(?:\((mA|A|mV|V|kW|W|kWh|Wh|Ohm|Ω|%|% Duty Cycle|ms|s|Hz|°C)\)|\[(mA|A|mV|V|kW|W|kWh|Wh|Ohm|Ω|%|ms|s|Hz|°C)\])$/.exec(label);
+    const unit = match ? match[1] || match[2] : dataset.inspectorUnit || '';
+    return {
+        label: match ? label.slice(0, match.index) : label,
+        unit: unit === 'Ohm' ? 'Ω' : unit === '% Duty Cycle' ? '%' : unit,
+    };
+}
+
 function chartHoverInspector({chart, tooltip}) {
     if (!tooltip.opacity) {
         if (chart.$inspector) chart.$inspector.hidden = true;
@@ -311,13 +397,17 @@ function chartHoverInspector({chart, tooltip}) {
         dot.style.backgroundColor = item.dataset.borderColor;
         const label = document.createElement('span');
         label.className = 'chart-hover-label';
-        label.textContent = item.dataset.label;
+        const description = chartInspectorLabel(item.dataset);
+        label.textContent = description.label;
         const value = document.createElement('span');
         value.className = 'chart-hover-value';
         // Logarithmic plots substitute 0.01 for zero; show the recorded value.
         const y = item.dataset.inspectorValues?.[item.dataIndex] ?? item.parsed.y;
         value.textContent = Number.isFinite(y) ? number.format(y) : '—';
-        row.append(dot, label, value);
+        const unit = document.createElement('span');
+        unit.className = 'chart-hover-unit';
+        unit.textContent = description.unit;
+        row.append(dot, label, value, unit);
         inspector.appendChild(row);
     });
     if (items.length > rowLimit) {
@@ -355,6 +445,7 @@ function chartHoverInspector({chart, tooltip}) {
  * @param {string}        [cfg.zoomYKey]         - URL hash key for y-axis zoom
  * @param {Object}        [cfg.xScale]           - x-axis overrides (e.g. numeric time bounds)
  * @param {Array}         [cfg.plugins]          - chart-local plugins
+ * @param {string}        [cfg.pickerPrefix]     - synchronize legend with signal picker
  * @returns {Chart}       the new Chart instance
  */
 function _createTimeSeriesChart(cfg) {
@@ -406,7 +497,7 @@ function _createTimeSeriesChart(cfg) {
 
     const chart = new Chart(canvas, {
         type: 'line',
-        plugins: [chartPresentationPlugin, ...(cfg.plugins || [])],
+        plugins: [chartPresentationPlugin, chartLegendPlugin, ...(cfg.plugins || [])],
         data: { labels: cfg.labels, datasets: cfg.datasets },
         options: {
             animation: false,
@@ -435,10 +526,12 @@ function _createTimeSeriesChart(cfg) {
                     callbacks: tooltipCallbacks,
                 },
                 legend: {
+                    display: false,
                     labels: { color: textColor, font: tickFont, usePointStyle: true,
                         pointStyle: 'line', boxWidth: 20, padding: 16 },
                     position: 'bottom',
                 },
+                htmlSignalLegend: {pickerPrefix: cfg.pickerPrefix},
                 zoom: {
                     zoom: {
                         drag: {
@@ -1430,12 +1523,14 @@ function protoRenderChart() {
         const points = protoData.numeric_time_axis
             ? chartData.map((y, i) => ({x: protoData.sample_times_ms[i], y})) : chartData;
         const dataset = _chartDataset(labelLookup[colName].label, points, labelLookup[colName].color);
+        dataset.signalKey = colName;
         if (useLog) dataset.inspectorValues = rawData;
         datasets.push(dataset);
     });
 
     protoChart = _createTimeSeriesChart({
         canvasId: 'proto-chart',
+        pickerPrefix: 'proto',
         prevChart: protoChart,
         labels: protoData.labels,
         datasets: datasets,
@@ -2178,7 +2273,9 @@ function renderCmChart() {
             return;
         }
 
-        datasets.push(_chartDataset(colMeta.label, data, colMeta.color));
+        const dataset = _chartDataset(colMeta.label, data, colMeta.color);
+        dataset.signalKey = key;
+        datasets.push(dataset);
     });
 
     // Log / linear Y-axis
@@ -2187,6 +2284,7 @@ function renderCmChart() {
 
     cmChart = _createTimeSeriesChart({
         canvasId: 'cm-chart',
+        pickerPrefix: 'cm',
         prevChart: cmChart,
         labels: labels,
         datasets: datasets,
@@ -2330,6 +2428,7 @@ function _renderMetersChart(cfg) {
 
     const datasets = slots.map((slot, idx) => {
         const ds = _chartDataset(slot.name, slot.samples.slice(firstIdx), idx);
+        ds.inspectorUnit = 'W';
         // Sample arrays may be mostly null (no value seen yet); draw small
         // points so isolated values are visible despite the line gaps.
         ds.pointRadius = 1.5;
