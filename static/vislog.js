@@ -369,7 +369,7 @@ function _createTimeSeriesChart(cfg) {
     const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
     const textColor = isDark ? '#f0f0f0' : '#212529';
     const gridColor = isDark ? '#94a3b814' : '#64748b14';
-    const tickFont = {size: 11, family: 'system-ui, sans-serif'};
+    const tickFont = {size: 12, family: 'system-ui, sans-serif'};
 
     const yScale = {
         display: true,

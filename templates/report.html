@@ -31,7 +31,7 @@
             <a href="/{{ 'en' if lang == 'de' else 'de' }}/{{ request.path.split('/')[2:] | join('/') }}" class="btn btn-sm btn-outline-secondary btn-lang" title="{{ t.switch_language }}">
                 {{ 'EN' if lang == 'de' else 'DE' }}
             </a>
-            <button class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
+            <button class="btn btn-sm btn-outline-secondary btn-theme" onclick="toggleTheme()" title="{{ t.toggle_theme }}">
                 <i class="bi bi-sun-fill d-none" id="theme-icon-light"></i>
                 <i class="bi bi-moon-fill" id="theme-icon-dark"></i>
             </button>
