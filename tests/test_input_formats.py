@@ -352,12 +352,17 @@ class FlaskInputFormatTests(unittest.TestCase):
                 html, data = self.render(query)
                 self.assertEqual(data['snapshot'], selected)
                 self.assertEqual(data['report_snapshots'], ['pre', 'post'])
+                self.assertTrue(data['config_diff_available'])
+                self.assertIn('id="config-diff-tab"', html)
+                self.assertIn('id="config-diff-rows"', html)
                 self.assertEqual(data['report_json']['fixture'], label)
                 self.assertEqual(data['report_log'], f'{label}-event-one\n\n{label}-event-two')
                 self.assertIn('id="config-tab"', html)
                 self.assertIn('id="log-tab"', html)
-                self.assertIn('id="report-json"', html)
-                self.assertIn('id="report-log-text"', html)
+                self.assertIn('id="protocol-config"', html)
+                self.assertIn('id="before-protocol-json"', html)
+                self.assertIn('id="after-protocol-json"', html)
+                self.assertIn('id="protocol-event-log"', html)
                 for old_tab in ('before-json-tab', 'after-json-tab', 'before-log-tab', 'after-log-tab'):
                     self.assertNotIn(f'id="{old_tab}"', html)
                 self.assertEqual(data['report_trace'], f'{label}-trace-outside')
@@ -369,10 +374,9 @@ class FlaskInputFormatTests(unittest.TestCase):
                 self.assertNotIn(f'{other}-synthetic.bin', html)
                 other_snapshot = snapshot_fixture(other, 2 if other == 'after' else 1)
                 self.assertNotIn(other_snapshot['coredump'], html)
-                self.assertIn(f'<option value="{selected}" selected>', html)
-                self.assertLess(html.index('role="tablist"'), html.index('id="report-snapshot"'))
-                self.assertLess(html.index('id="chart-tab"'), html.index('id="report-snapshot"'))
-                self.assertLess(html.index('id="report-snapshot"'), html.index('id="config-tab"'))
+                self.assertIn(f'class="nav-link active" id="config-{selected}-tab"', html)
+                self.assertNotIn('id="report-snapshot"', html)
+                self.assertLess(html.index('id="protocol-config"'), html.index('id="config-diff-tab"'))
                 self.assertNotIn('report-snapshot-hint', html)
                 self.assertNotIn('<label for="report-snapshot"', html)
                 self.assertIn(f'/{UUID}/iso15118.pcap?snapshot={selected}', html)
@@ -405,6 +409,8 @@ class FlaskInputFormatTests(unittest.TestCase):
         self.content = legacy_protocol_fixture()
         html, data = self.render('?configuration=power&selected=power')
         self.assertFalse(data['has_embedded_reports'])
+        self.assertTrue(data['config_diff_available'])
+        self.assertIn('id="config-diff-tab"', html)
         self.assertEqual(data['before_protocol_json'], {'fixture': 'legacy-before'})
         self.assertEqual(data['after_protocol_json'], {'fixture': 'legacy-after'})
         self.assertEqual(data['before_protocol_log'], 'legacy-before-event')
@@ -416,8 +422,12 @@ class FlaskInputFormatTests(unittest.TestCase):
         self.assertIn('id="proto-chart"', html)
         self.assertNotIn('id="report-snapshot"', html)
         self.assertNotIn('id="dump-tab"', html)
-        for old_tab in ('before-json-tab', 'after-json-tab', 'before-log-tab', 'after-log-tab'):
-            self.assertIn(f'id="{old_tab}"', html)
+        self.assertIn('id="log-tab"', html)
+        self.assertIn('id="protocol-event-log"', html)
+        for old_tab in ('before-log-tab', 'after-log-tab', 'before-json-tab', 'after-json-tab'):
+            self.assertNotIn(f'id="{old_tab}"', html)
+        for config_tab in ('config-tab', 'config-pre-tab', 'config-post-tab'):
+            self.assertIn(f'id="{config_tab}"', html)
         self.firmware.assert_not_called()
 
     def test_default_falls_back_to_only_pre_snapshot(self):
@@ -425,7 +435,24 @@ class FlaskInputFormatTests(unittest.TestCase):
         html, data = self.render()
         self.assertEqual(data['snapshot'], 'pre')
         self.assertEqual(data['report_snapshots'], ['pre'])
+        self.assertEqual(data['config_snapshots'], ['pre'])
+        self.assertIn('id="config-pre-tab"', html)
+        self.assertNotIn('id="config-post-tab"', html)
         self.assertIn('before-module-one', html)
+        self.assertFalse(data['config_diff_available'])
+        self.assertNotIn('id="config-diff-tab"', html)
+
+    def test_config_diff_requires_two_valid_json_snapshots(self):
+        for before in ('{}', '{broken', '', None):
+            with self.subTest(before=before):
+                self.content = '\n'.join((
+                    section('PRE_DEBUG_REPORT', before) if before is not None else section('PRE_EVENT_LOG', 'event'),
+                    section('DEBUG_PROTOCOL', CSV),
+                    section('POST_DEBUG_REPORT', '{}'),
+                ))
+                html, data = self.render()
+                self.assertEqual(data['config_diff_available'], before == '{}')
+                self.assertEqual('id="config-diff-tab"' in html, before == '{}')
 
     def test_invalid_and_unavailable_snapshot_statuses(self):
         for suffix in ('', '/iso15118.pcap', '/iso15118.json'):

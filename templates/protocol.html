@@ -28,18 +28,8 @@
                 <i class="bi bi-graph-up"></i> {{ t.chart_title }}
             </a>
         </li>
-        {% if data.has_embedded_reports %}
-        <li class="nav-item d-flex align-items-center ms-3 px-2 py-1" role="presentation">
-            <select id="report-snapshot" class="form-select form-select-sm w-auto" aria-label="{{ t.report_snapshot_label }}" onchange="selectReportSnapshot(this.value)">
-                {% for snapshot in data.report_snapshots %}
-                <option value="{{ snapshot }}"{% if snapshot == data.snapshot %} selected{% endif %}>{{ t.snapshot_before if snapshot == 'pre' else t.snapshot_after }}</option>
-                {% endfor %}
-            </select>
-        </li>
-        {% endif %}
         <li class="nav-item" role="presentation">
-            {% if data.has_embedded_reports %}
-            <a class="nav-link" id="config-tab" href="#tab=config-tab" data-bs-toggle="tab" data-bs-target="#report-json" role="tab">
+            <a class="nav-link" id="config-tab" href="#tab=config-tab" data-bs-toggle="tab" data-bs-target="#protocol-config" role="tab">
                 <i class="bi bi-gear"></i> {{ t.tab_configuration }}
             </a>
         </li>
@@ -47,26 +37,6 @@
             <a class="nav-link" id="log-tab" href="#tab=log-tab" data-bs-toggle="tab" data-bs-target="#report-log" role="tab">
                 <i class="bi bi-journal-text"></i> {{ t.tab_event_log }}
             </a>
-            {% else %}
-            <a class="nav-link" id="before-json-tab" href="#tab=before-json-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-json" role="tab">
-                <i class="bi bi-gear"></i> {{ t.tab_config_before }}
-            </a>
-        </li>
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" id="after-json-tab" href="#tab=after-json-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-json" role="tab">
-                <i class="bi bi-gear"></i> {{ t.tab_config_after }}
-            </a>
-        </li>
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" id="before-log-tab" href="#tab=before-log-tab" data-bs-toggle="tab" data-bs-target="#before-protocol-log" role="tab">
-                <i class="bi bi-journal-text"></i> {{ t.tab_log_before }}
-            </a>
-        </li>
-        <li class="nav-item" role="presentation">
-            <a class="nav-link" id="after-log-tab" href="#tab=after-log-tab" data-bs-toggle="tab" data-bs-target="#after-protocol-log" role="tab">
-                <i class="bi bi-journal-text"></i> {{ t.tab_log_after }}
-            </a>
-            {% endif %}
         </li>
         {% if data.has_embedded_reports %}
         {{ report_feature_tabs(data, t) }}
@@ -132,23 +102,55 @@
         </div>
 
         <!-- Config / Log Tabs -->
-        {% if data.has_embedded_reports %}
-        <div class="tab-pane fade p-3" id="report-json" role="tabpanel"></div>
-        <div class="tab-pane fade p-3" id="report-log" role="tabpanel">
-            <textarea id="report-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
-        </div>
-        {% else %}
-        <div class="tab-pane fade p-3" id="before-protocol-json" role="tabpanel">
-        </div>
-        <div class="tab-pane fade p-3" id="after-protocol-json" role="tabpanel">
-        </div>
-        <div class="tab-pane fade p-3" id="before-protocol-log" role="tabpanel">
-            <textarea id="before-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
-        </div>
-        <div class="tab-pane fade p-3" id="after-protocol-log" role="tabpanel">
-            <textarea id="after-protocol-log-text" class="form-control log-textarea" rows="30" readonly></textarea>
+        {% set config_default = 'pre' if data.snapshot == 'pre' or 'post' not in data.config_snapshots else 'post' %}
+        <div class="tab-pane fade p-3" id="protocol-config" role="tabpanel" aria-labelledby="config-tab">
+            <ul class="nav nav-tabs mb-3" id="config-view-tabs" role="tablist" aria-label="{{ t.tab_configuration }}">
+                {% for snapshot in data.config_snapshots %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link{% if snapshot == config_default %} active{% endif %}" id="config-{{ snapshot }}-tab" data-config-view="{{ snapshot }}" data-bs-toggle="tab" data-bs-target="#{{ 'before' if snapshot == 'pre' else 'after' }}-protocol-json" type="button" role="tab" aria-selected="{{ 'true' if snapshot == config_default else 'false' }}">{{ t.snapshot_before if snapshot == 'pre' else t.snapshot_after }}</button>
+                </li>
+                {% endfor %}
+                {% if data.config_diff_available %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="config-diff-tab" data-config-view="diff" data-bs-toggle="tab" data-bs-target="#config-diff" type="button" role="tab" aria-selected="false">{{ t.config_diff_short }}</button>
+                </li>
+                {% endif %}
+            </ul>
+            <div class="tab-content">
+                {% for snapshot in data.config_snapshots %}
+                <div class="tab-pane fade{% if snapshot == config_default %} show active{% endif %}" id="{{ 'before' if snapshot == 'pre' else 'after' }}-protocol-json" role="tabpanel" aria-labelledby="config-{{ snapshot }}-tab"></div>
+                {% endfor %}
+        {% if data.config_diff_available %}
+        <div class="tab-pane fade" id="config-diff" role="tabpanel" aria-labelledby="config-diff-tab">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <input id="config-diff-search" type="search" class="form-control config-diff-search" placeholder="{{ t.config_diff_search }}" aria-label="{{ t.config_diff_search }}">
+                <select id="config-diff-filter" class="form-select w-auto" aria-label="{{ t.config_diff_filter }}">
+                    <option value="all">{{ t.filter_all }}</option>
+                    <option value="changed">{{ t.config_diff_changed }}</option>
+                    <option value="added">{{ t.config_diff_added }}</option>
+                    <option value="removed">{{ t.config_diff_removed }}</option>
+                </select>
+                <span id="config-diff-count" class="small text-body-secondary" role="status"></span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered align-top config-diff-table">
+                    <thead><tr>
+                        <th scope="col">{{ t.config_diff_path }}</th>
+                        <th scope="col">{{ t.config_diff_filter }}</th>
+                        <th scope="col">{{ t.snapshot_before }}</th>
+                        <th scope="col">{{ t.snapshot_after }}</th>
+                    </tr></thead>
+                    <tbody id="config-diff-rows"></tbody>
+                </table>
+            </div>
+            <p id="config-diff-empty" class="text-body-secondary d-none"></p>
         </div>
         {% endif %}
+            </div>
+        </div>
+        <div class="tab-pane fade p-3" id="report-log" role="tabpanel" aria-labelledby="log-tab">
+            <div id="protocol-event-log" class="protocol-event-log border rounded" tabindex="0" aria-label="{{ t.tab_event_log }}"></div>
+        </div>
         {% if data.has_embedded_reports %}
         {{ report_feature_panes(data, t, request) }}
         {% endif %}

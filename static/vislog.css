@@ -40,6 +40,51 @@
   --search-current-bg: rgba(255, 193, 7, 0.5);
 }
 
+/* Combined protocol event log */
+.protocol-event-log {
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.protocol-log-heading {
+  padding: 0.5rem 0.75rem;
+  background: var(--bs-tertiary-bg);
+}
+
+.protocol-event-log pre {
+  margin: 0;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.protocol-event-log .protocol-log-added {
+  background: var(--bs-success-bg-subtle);
+  border-left: 3px solid var(--bs-success);
+}
+
+/* Before/after configuration diff */
+.config-diff-search {
+  flex: 1 1 16rem;
+  width: auto;
+}
+
+.config-diff-table {
+  table-layout: fixed;
+  min-width: 40rem;
+}
+
+.config-diff-table th:nth-child(2) {
+  width: 8rem;
+}
+
+.config-diff-table pre,
+.config-diff-table code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
 /* --------------------------------------------------------------------------
    Base Layout
    -------------------------------------------------------------------------- */

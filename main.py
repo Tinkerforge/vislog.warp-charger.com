@@ -1925,6 +1925,13 @@ def handle_protocol(document, lang, t):
         'sample_times_ms': _sanitize_for_json(parsed['df']['millis'].tolist()) if parsed['df'] is not None else [],
         'before_protocol_json': parsed['before_protocol_json'],
         'after_protocol_json': parsed['after_protocol_json'],
+        'config_snapshots': [key for key in ('pre', 'post') if key in document['snapshots']],
+        'config_diff_available': all(
+            key in document['snapshots']
+            and f'Invalid JSON in {prefix}DEBUG_REPORT.' not in document['warnings']
+            and f'Missing {prefix}DEBUG_REPORT data.' not in document['warnings']
+            for key, prefix in (('pre', 'PRE_'), ('post', 'POST_'))
+        ),
         'before_protocol_log': parsed['before_protocol_log'],
         'after_protocol_log': parsed['after_protocol_log'],
         'dropped_lines_count': document['dropped_lines_count'],

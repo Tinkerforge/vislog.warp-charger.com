@@ -163,27 +163,33 @@ function _clearZoomHash(xKey, yKey) {
 // Works on both protocol and report pages.
 // ---------------------------------------------------------------------------
 document.addEventListener('shown.bs.tab', function(e) {
+    if (e.target.dataset.configView) {
+        _hashSet('config', e.target.dataset.configView);
+        return;
+    }
     const tabId = e.target.id;  // e.g. "chart-tab", "config-tab"
     if (tabId) _hashSet('tab', tabId);
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Old combined-protocol links encoded the snapshot in the tab name.
-    const snapshotSelector = document.getElementById('report-snapshot');
+    // Migrate links to the former top-level configuration and event-log tabs.
     const oldTab = _hashParams().get('tab') || '';
     const oldSnapshotTab = /^(before|after)-(json|log)-tab$/.exec(oldTab);
-    if (snapshotSelector && oldSnapshotTab) {
-        const snapshot = oldSnapshotTab[1] === 'before' ? 'pre' : 'post';
-        const url = new URL(location.href);
-        const hash = new URLSearchParams(url.hash.slice(1));
-        hash.set('tab', oldSnapshotTab[2] === 'json' ? 'config-tab' : 'log-tab');
-        url.hash = hash.toString();
-        url.searchParams.set('snapshot', snapshot);
-        if (snapshotSelector.value !== snapshot) {
-            location.replace(url.href);
-            return;
+    if (oldSnapshotTab && oldSnapshotTab[2] === 'log' && document.getElementById('protocol-event-log')) {
+        _hashSet('tab', 'log-tab');
+    } else if (document.getElementById('config-view-tabs')) {
+        if (oldSnapshotTab && oldSnapshotTab[2] === 'json') {
+            _hashSet('tab', 'config-tab');
+            _hashSet('config', oldSnapshotTab[1] === 'before' ? 'pre' : 'post');
+        } else if (oldTab === 'config-diff-tab') {
+            _hashSet('tab', 'config-tab');
+            _hashSet('config', 'diff');
         }
-        history.replaceState(null, '', url.href);
+    }
+    const configView = _hashParams().get('config');
+    if (['pre', 'post', 'diff'].includes(configView)) {
+        const configTab = document.querySelector(`#config-view-tabs [data-config-view="${configView}"]`);
+        if (configTab) bootstrap.Tab.getOrCreateInstance(configTab).show();
     }
     _updateTabLinks();
 
@@ -825,6 +831,135 @@ function collapseAllJson(selector) {
 }
 
 // ---------------------------------------------------------------------------
+// Combined protocol event log
+// ---------------------------------------------------------------------------
+function mergeEventLogs(before, after) {
+    // Only normalize line endings and outer blank lines; indentation is meaningful.
+    const lines = text => {
+        const normalized = text.replace(/\r\n?/g, '\n').replace(/^\n+|\n+$/g, '');
+        return normalized ? normalized.split('\n') : [];
+    };
+    const left = lines(before);
+    const right = lines(after);
+    if (!left.length || !right.length) return {before: left, after: right, overlap: 0};
+
+    // Find the longest suffix of the before log matching the after log's prefix.
+    // A linear prefix-function scan also handles repeated messages and ring-buffer truncation.
+    const sequence = [...right, null, ...left];
+    const prefix = new Array(sequence.length).fill(0);
+    for (let i = 1; i < sequence.length; i++) {
+        let j = prefix[i - 1];
+        while (j > 0 && sequence[i] !== sequence[j]) j = prefix[j - 1];
+        if (sequence[i] === sequence[j]) j++;
+        prefix[i] = j;
+    }
+    let overlap = prefix[prefix.length - 1];
+    if (!right.slice(0, overlap).some(line => line.trim())) overlap = 0;
+    return {before: left, after: right.slice(overlap), overlap};
+}
+
+function initProtocolEventLog(data) {
+    const container = document.getElementById('protocol-event-log');
+    if (!container) return;
+    const merged = mergeEventLogs(data.before_protocol_log, data.after_protocol_log);
+    container.replaceChildren();
+    function section(label, lines, added = false) {
+        const heading = document.createElement('div');
+        heading.className = 'protocol-log-heading small fw-semibold';
+        heading.textContent = label;
+        const pre = document.createElement('pre');
+        pre.className = added ? 'protocol-log-added' : '';
+        pre.textContent = lines.join('\n');
+        container.append(heading, pre);
+    }
+    if (merged.before.length) section(T.tab_log_before, merged.before);
+    if (merged.after.length) {
+        if (merged.before.length && !merged.overlap) {
+            const note = document.createElement('div');
+            note.className = 'protocol-log-heading small text-body-secondary';
+            note.textContent = T.event_log_no_overlap;
+            container.appendChild(note);
+        }
+        section(merged.overlap ? T.event_log_added : T.tab_log_after, merged.after, merged.overlap > 0);
+    } else {
+        const note = document.createElement('div');
+        note.className = 'protocol-log-heading small text-body-secondary';
+        note.textContent = merged.overlap ? T.event_log_no_new
+            : merged.before.length ? T.event_log_no_after : T.event_log_empty;
+        container.appendChild(note);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Before/after configuration diff
+// ---------------------------------------------------------------------------
+function configDiff(before, after) {
+    const rows = [];
+    const kind = value => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+    function visit(left, right, path) {
+        if (left === right) return;
+        const type = kind(left);
+        if (type === kind(right) && (type === 'object' || type === 'array')) {
+            const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])];
+            keys.sort(type === 'array' ? (a, b) => Number(a) - Number(b) : undefined);
+            for (const key of keys) {
+                // Bracket notation keeps API paths, dots and array indices unambiguous.
+                const childPath = path + '[' + (type === 'array' ? key : JSON.stringify(key)) + ']';
+                if (!Object.prototype.hasOwnProperty.call(left, key)) {
+                    rows.push({path: childPath, status: 'added', after: right[key]});
+                } else if (!Object.prototype.hasOwnProperty.call(right, key)) {
+                    rows.push({path: childPath, status: 'removed', before: left[key]});
+                } else {
+                    visit(left[key], right[key], childPath);
+                }
+            }
+        } else {
+            rows.push({path, status: 'changed', before: left, after: right});
+        }
+    }
+    visit(before, after, '$');
+    return rows;
+}
+
+function initConfigDiff(data) {
+    const container = document.getElementById('config-diff');
+    if (!container) return;
+    const search = document.getElementById('config-diff-search');
+    const filter = document.getElementById('config-diff-filter');
+    const tbody = document.getElementById('config-diff-rows');
+    const empty = document.getElementById('config-diff-empty');
+    const rows = configDiff(data.before_protocol_json, data.after_protocol_json).map(row => ({
+        ...row,
+        searchText: [row.path, JSON.stringify(row.before), JSON.stringify(row.after)].join(' ').toLowerCase(),
+    }));
+    const classes = {changed: 'text-bg-warning', added: 'text-bg-success', removed: 'text-bg-danger'};
+    function valueCell(row, side) {
+        if (!Object.prototype.hasOwnProperty.call(row, side)) {
+            return `<span class="text-body-secondary">${_escapeHtml(T.config_diff_absent)}</span>`;
+        }
+        return `<pre>${_escapeHtml(JSON.stringify(row[side], null, 2))}</pre>`;
+    }
+    function render() {
+        const query = search.value.trim().toLowerCase();
+        const visible = rows.filter(row => (filter.value === 'all' || row.status === filter.value)
+            && row.searchText.includes(query));
+        tbody.innerHTML = visible.map(row => `<tr>
+            <td><code>${_escapeHtml(row.path)}</code></td>
+            <td><span class="badge ${classes[row.status]}">${_escapeHtml(T['config_diff_' + row.status])}</span></td>
+            <td>${valueCell(row, 'before')}</td><td>${valueCell(row, 'after')}</td>
+        </tr>`).join('');
+        document.getElementById('config-diff-count').textContent = T.config_diff_count
+            .replace('${visible}', visible.length).replace('${total}', rows.length);
+        empty.textContent = rows.length ? T.config_diff_no_matches : T.config_diff_identical;
+        empty.classList.toggle('d-none', visible.length !== 0);
+        container.querySelector('table').classList.toggle('d-none', visible.length === 0);
+    }
+    search.addEventListener('input', render);
+    filter.addEventListener('change', render);
+    render();
+}
+
+// ---------------------------------------------------------------------------
 // Protocol Chart (unified single-page)
 // ---------------------------------------------------------------------------
 let protoChart = null;
@@ -836,6 +971,8 @@ let protoIsoSignature = '';
 
 function initProtocolChart(data) {
     protoData = data;
+    initConfigDiff(data);
+    initProtocolEventLog(data);
     if (!protoData || !protoData.column_metadata) return;
     if (data.numeric_time_axis) {
         // Old links store sample indices in zx; new links store uptime in zms.
@@ -892,17 +1029,14 @@ function initProtocolChart(data) {
         }
     }
 
-    if (!data.has_embedded_reports) {
-        const protocolJson = data.before_protocol_json || data.after_protocol_json || {};
+    for (const [snapshot, selector] of [['pre', '#before-protocol-json'], ['post', '#after-protocol-json']]) {
+        if (!document.querySelector(selector)) continue;
+        const protocolJson = snapshot === 'pre' ? data.before_protocol_json : data.after_protocol_json;
         const hwVersion = _detectHwVersion(protocolJson);
         const jsonviewOpts = data.api_constants
             ? { apiConstants: data.api_constants, hwVersion: hwVersion }
             : {};
-        make_jsonview(data.before_protocol_json, '#before-protocol-json', jsonviewOpts);
-        make_jsonview(data.after_protocol_json, '#after-protocol-json', jsonviewOpts);
-
-        document.getElementById('before-protocol-log-text').value = data.before_protocol_log;
-        document.getElementById('after-protocol-log-text').value = data.after_protocol_log;
+        make_jsonview(protocolJson, selector, jsonviewOpts);
     }
 
     // Render chart with initial selection
@@ -1157,18 +1291,12 @@ function vislog_report(data) {
     const jsonviewOpts = data.api_constants
         ? { apiConstants: data.api_constants, hwVersion: hwVersion }
         : {};
-    make_jsonview(data.report_json, '#report-json', jsonviewOpts);
+    if (document.getElementById('report-json')) make_jsonview(data.report_json, '#report-json', jsonviewOpts);
 
-    document.getElementById('report-log-text').value = data.report_log;
+    const reportLog = document.getElementById('report-log-text');
+    if (reportLog) reportLog.value = data.report_log;
 
     initReportFeatures(data);
-}
-
-function selectReportSnapshot(snapshot) {
-    const url = new URL(location.href);
-    url.searchParams.set('snapshot', snapshot);
-    // Reload so packet data, selection and detail rows belong to only one snapshot.
-    location.href = url.href;
 }
 
 function renderReportCharts() {
