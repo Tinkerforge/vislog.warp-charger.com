@@ -1541,7 +1541,9 @@ function protoRenderChart() {
             type: 'linear', min: protoData.sample_times_ms[0],
             max: protoData.sample_times_ms[protoData.sample_times_ms.length - 1],
         } : undefined,
-        xTickCallback: protoData.numeric_time_axis ? value => protoFormatTime(value, false) : undefined,
+        xTickCallback: protoData.numeric_time_axis ? function(value, index, ticks) {
+            return protoTimeTick(value, index, ticks, this.min, this.max);
+        } : undefined,
         tooltipTitleCallback: protoData.numeric_time_axis
             ? items => items.length ? protoFormatTime(items[0].parsed.x) : '' : undefined,
         xTitle: protoData.numeric_time_axis
@@ -1561,9 +1563,30 @@ function protoResetZoom() {
     chartResetZoom(protoChart, protoData.numeric_time_axis ? 'zms' : 'zx', 'zy');
 }
 
-function protoFormatTime(ms, precise = true) {
+function protoTimeTick(value, index, ticks, min, max) {
+    // Tick spacing, rather than recording duration, determines the precision
+    // needed to distinguish adjacent labels after zooming or resizing.
+    const spacing = ticks.reduce((smallest, tick, i) => i
+        ? Math.min(smallest, Math.abs(tick.value - ticks[i - 1].value) || Infinity) : smallest, Infinity);
+    const precise = spacing < 1000;
+    const time = protoFormatTime(value, precise, false);
+    // At sub-millisecond zoom the source clock cannot distinguish every tick.
+    if (index && time === protoFormatTime(ticks[index - 1].value, precise, false)) return '';
     if (protoData.time_offset_ms !== null) {
-        return new Date(Math.round(ms + protoData.time_offset_ms)).toISOString().slice(11, precise ? 23 : 19);
+        const date = ms => new Date(Math.round(ms + protoData.time_offset_ms)).toISOString().slice(0, 10);
+        if (date(min) !== date(max)) return [time, date(value)];
+    }
+    return time;
+}
+
+function protoFormatTime(ms, precise = true, includeDate = true) {
+    if (protoData.time_offset_ms !== null) {
+        const timestamp = new Date(Math.round(ms + protoData.time_offset_ms)).toISOString();
+        const samples = protoData.sample_times_ms || [];
+        const day = value => Math.floor(Math.round(value + protoData.time_offset_ms) / 86400000);
+        const showDate = includeDate && samples.length &&
+            (day(samples[0]) !== day(samples[samples.length - 1]) || day(ms) !== day(samples[0]));
+        return (showDate ? timestamp.slice(0, 10) + ' ' : '') + timestamp.slice(11, precise ? 23 : 19);
     }
     const value = Math.max(0, Math.round(ms));
     const hours = Math.floor(value / 3600000);

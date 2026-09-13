@@ -79,3 +79,22 @@ test('wall time and uptime keep milliseconds without wrapping uptime at 24 hours
     assert.equal(evaluate('protoFormatTime(1051)'), '00:00:00.051');
     assert.equal(evaluate('protoFormatTime(1051, false)'), '00:00:00');
 });
+
+test('axis precision follows tick spacing, suppressing sub-millisecond duplicates', () => {
+    evaluate('protoData = {time_offset_ms: null}');
+    assert.equal(evaluate('protoTimeTick(1200, 1, [{value:1000}, {value:1200}], 1000, 2000)'), '00:00:01.200');
+    assert.equal(evaluate('protoTimeTick(2000, 1, [{value:1000}, {value:2000}], 0, 9000)'), '00:00:02');
+    assert.equal(evaluate('protoTimeTick(1000.2, 1, [{value:1000.1}, {value:1000.2}], 1000, 1001)'), '');
+    assert.equal(evaluate('protoTimeTick(90061000, 0, [{value:90061000}], 90000000, 91000000)'), '25:01:01');
+});
+
+test('midnight adds date context to ticks and recorded/packet timestamps', () => {
+    evaluate('protoData = {time_offset_ms: Date.UTC(2026, 8, 13, 23, 59, 59), sample_times_ms: [0, 2000]}');
+    assert.deepEqual(Array.from(evaluate('protoTimeTick(1000, 1, [{value:0}, {value:1000}], 0, 2000)')),
+        ['00:00:00', '2026-09-14']);
+    assert.equal(evaluate('protoFormatTime(1051)'), '2026-09-14 00:00:00.051');
+    assert.equal(evaluate('protoTimeTick(1200, 1, [{value:1100}, {value:1200}], 1100, 1900)'), '00:00:00.200');
+    evaluate('protoData.sample_times_ms = [1100, 2000]');
+    assert.equal(evaluate('protoFormatTime(1200)'), '00:00:00.200');
+    assert.equal(evaluate('protoFormatTime(0)'), '2026-09-13 23:59:59.000');
+});
