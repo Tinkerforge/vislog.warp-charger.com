@@ -1,0 +1,38 @@
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <input type="search" id="modbus-filter" class="form-control form-control-sm iso15118-filter" placeholder="{{ t.iso15118_filter_placeholder }}" aria-label="{{ t.iso15118_filter_placeholder }}" disabled>
+    <span id="modbus-count" class="text-body-secondary small" role="status"></span>
+    <span class="text-body-secondary small ms-auto">{{ t.modbus_synthetic_hint }}</span>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ request.path }}/modbus.pcap{% if data.has_embedded_reports %}?snapshot={{ data.snapshot | urlencode }}{% endif %}">
+        <i class="bi bi-download"></i> {{ t.iso15118_download_pcap }}
+    </a>
+</div>
+<div id="modbus-status" class="text-body-secondary mb-3" role="status">{{ t.iso15118_loading }}</div>
+<div id="modbus-workspace" class="iso15118-workspace mb-3">
+    <div class="iso15118-packet-list">
+        <table class="iso15118-table">
+            <thead><tr>
+                <th class="iso15118-col-no">{{ t.iso15118_col_no }}</th>
+                <th class="iso15118-col-addr">{{ t.iso15118_col_source }}</th>
+                <th class="iso15118-col-addr">{{ t.iso15118_col_destination }}</th>
+                <th class="iso15118-col-proto">{{ t.iso15118_col_protocol }}</th>
+                <th class="iso15118-col-len">{{ t.iso15118_col_length }}</th>
+                <th class="iso15118-col-info">{{ t.iso15118_col_info }}</th>
+            </tr></thead>
+            <tbody id="modbus-tbody"></tbody>
+        </table>
+    </div>
+    <div id="modbus-detail-host" class="iso15118-detail-host">
+        <section id="modbus-detail" class="iso15118-detail d-none" aria-labelledby="modbus-detail-title">
+            <div class="iso15118-detail-header">
+                <strong id="modbus-detail-title"></strong>
+                <button type="button" id="modbus-close" class="btn-close ms-auto" aria-label="{{ t.iso15118_clear }}" title="{{ t.iso15118_clear }}"></button>
+                <div id="modbus-detail-summary" class="iso15118-detail-summary"></div>
+            </div>
+            <div id="modbus-detail-body" class="iso15118-detail-body"></div>
+        </section>
+    </div>
+</div>
+<details>
+    <summary>{{ t.modbus_raw_trace }}</summary>
+    {{ event_log_viewer(t, 'trace-modbus_tcp_srvr-text', t.modbus_raw_trace) }}
+</details>

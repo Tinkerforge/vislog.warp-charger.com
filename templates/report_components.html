@@ -118,7 +118,9 @@
                 </div>
             </div>
             {% endif %}
-            {% if module_name == 'iso15118_ll' and data.iso15118_ll_available %}
+            {% if module_name == 'modbus_tcp_srvr' and data.modbus_tcp_available %}
+            {% include 'modbus_viewer.html' %}
+            {% elif module_name == 'iso15118_ll' and data.iso15118_ll_available %}
             <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                 <input type="text" id="iso15118-filter" class="form-control form-control-sm iso15118-filter" placeholder="{{ t.iso15118_filter_placeholder }}" disabled>
                 <span id="iso15118-count" class="text-body-secondary small"></span>

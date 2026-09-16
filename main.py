@@ -24,6 +24,7 @@ import zoneinfo
 from io import BytesIO
 from i18n import get_translations, format_parse_warning, SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE
 from input_parser import parse_document
+from modbus_trace import reconstruct_modbus_trace, modbus_register_info
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB upload limit
@@ -543,6 +544,71 @@ def iso15118_packets_json(lang, uuid):
         return Response(gz_payload, mimetype='application/json',
                         headers={'Content-Encoding': 'gzip'})
     return Response(gzip.decompress(gz_payload), mimetype='application/json')
+
+def extract_modbus_capture(snapshot):
+    traces = re.findall(r'__begin_modbus_tcp_srvr__(.*?)__end_modbus_tcp_srvr__',
+                        snapshot['trace_log'], re.DOTALL)
+    content = '\n'.join(trace.strip() for trace in traces if trace.strip())
+    if not content:
+        return None, None
+    return reconstruct_modbus_trace(content)
+
+
+@app.route('/<lang>/<uuid>/modbus.pcap')
+@app.route('/<lang>/<uuid>/modbus.json')
+def modbus_capture(lang, uuid):
+    if lang not in SUPPORTED_LANGUAGES or not UUID_PATTERN.fullmatch(uuid):
+        abort(404)
+    selection = request.args.get('snapshot')
+    if selection not in (None, 'standalone', 'pre', 'post'):
+        abort(400)
+    file_path = os.path.join(PROTOCOL_DIR, uuid)
+    if not os.path.exists(file_path):
+        abort(404)
+    document = read_and_preprocess_protocol(file_path)
+    selected, snapshot = select_report_snapshot(document)
+    download = request.path.endswith('.pcap')
+    cache_path = os.path.join(PROTOCOL_DIR, f'{uuid}.modbus.v2.{selected}.json.gz')
+    gz_payload = None
+    if not download:
+        try:
+            with open(cache_path, 'rb') as fh:
+                gz_payload = fh.read()
+        except OSError:
+            pass
+    if gz_payload is None:
+        pcap, metadata = extract_modbus_capture(snapshot)
+        if pcap is None:
+            abort(404)
+        if download:
+            return Response(pcap, mimetype='application/vnd.tcpdump.pcap', headers={
+                'Content-Disposition': f'attachment; filename={uuid}-modbus-reconstructed.pcap'})
+        has_messages = any(event['kind'] == 'message' for event in metadata['events'])
+        packets = []
+        if has_messages and TSHARK_PATH is not None:
+            try:
+                packets = dissect_pcap(pcap, ['-n', '-d', 'tcp.port==502,mbtcp'],
+                                       summary_annotation=modbus_register_info)
+            except Exception as e:
+                print(f'Warning: Failed to dissect Modbus capture: {e}')
+                packets = None
+        metadata['packets'] = packets or []
+        metadata['dissection_error'] = ('tshark-unavailable' if TSHARK_PATH is None else
+                                        'dissection-failed' if packets is None else None)
+        gz_payload = gzip.compress(json.dumps(metadata, separators=(',', ':')).encode('utf-8'))
+        # Do not cache failures: installing/recovering tshark should take effect immediately.
+        if metadata['dissection_error'] is None:
+            try:
+                tmp_path = f'{cache_path}.tmp.{os.getpid()}'
+                with open(tmp_path, 'wb') as fh:
+                    fh.write(gz_payload)
+                os.replace(tmp_path, cache_path)
+            except OSError as e:
+                print(f'Warning: Failed to write Modbus cache: {e}')
+    if 'gzip' in request.headers.get('Accept-Encoding', ''):
+        return Response(gz_payload, mimetype='application/json', headers={'Content-Encoding': 'gzip'})
+    return Response(gzip.decompress(gz_payload), mimetype='application/json')
+
 
 # Coredump parsing constants and helpers (based on esp32-firmware/software/coredump.py)
 TF_COREDUMP_PREFIX = b"___tf_coredump_info_start___"
@@ -1491,6 +1557,10 @@ def _pdml_node(el):
 
 
 def dissect_iso15118_pcap(pcap_bytes):
+    return dissect_pcap(pcap_bytes)
+
+
+def dissect_pcap(pcap_bytes, extra_args=(), summary_annotation=None):
     """Dissect a pcap with tshark into Wireshark-like packet data.
 
     Returns a list of packets, each [number, epoch_time, src, dst, protocol,
@@ -1498,12 +1568,12 @@ def dissect_iso15118_pcap(pcap_bytes):
     labels (see _pdml_node), or None if tshark is unavailable or failed.
     """
     if TSHARK_PATH is None:
-        print("Warning: tshark not found, cannot dissect iso15118_ll trace")
+        print("Warning: tshark not found, cannot dissect capture")
         return None
 
     # Pass 1: packet list columns (same columns as the Wireshark packet list).
     # The _ws.col.* column field names require Wireshark >= 4.2.
-    fields_out = _run_tshark(pcap_bytes, [
+    fields_out = _run_tshark(pcap_bytes, list(extra_args) + [
         '-T', 'fields', '-E', 'separator=/t',
         '-e', 'frame.number', '-e', 'frame.time_epoch',
         '-e', '_ws.col.def_src', '-e', '_ws.col.def_dst',
@@ -1515,7 +1585,7 @@ def dissect_iso15118_pcap(pcap_bytes):
 
     # Pass 2: protocol detail tree (PDML contains the exact strings Wireshark
     # shows in its packet detail pane)
-    pdml_out = _run_tshark(pcap_bytes, ['-T', 'pdml'])
+    pdml_out = _run_tshark(pcap_bytes, list(extra_args) + ['-T', 'pdml'])
     if pdml_out is None:
         return None
 
@@ -1555,6 +1625,10 @@ def dissect_iso15118_pcap(pcap_bytes):
                     tree.append(node)
             summary = summaries.get(number)
             if summary is not None:
+                if summary_annotation is not None:
+                    annotation = summary_annotation(elem)
+                    if annotation:
+                        summary[6] += ' | ' + annotation
                 packets.append(summary + [tree])
             elem.clear()
     except ET.ParseError as e:
@@ -1698,6 +1772,7 @@ def prepare_report(snapshot, lang):
         'coredump_info': coredump_info,
         'cm_parsed': cm_parsed,
         'iso15118_ll_available': iso15118_ll_available,
+        'modbus_tcp_available': 'modbus_tcp_srvr' in trace_modules,
         'meters_parsed': meters_parsed,
         'firmware_check': firmware_check,
         'api_constants': api_constants[lang],

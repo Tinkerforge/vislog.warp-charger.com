@@ -2138,6 +2138,9 @@ function initReportFeatures(data) {
     if (data.iso15118_ll_available) {
         initIso15118PacketList(data.has_embedded_reports ? data.snapshot : null);
     }
+    if (data.modbus_tcp_available) {
+        initModbusPacketList(data.has_embedded_reports ? data.snapshot : null, data.report_json['info/name']?.name);
+    }
 
     // Initialize charge manager chart if parsed data is available
     if (data.cm_parsed) {
@@ -2242,6 +2245,7 @@ function iso15118ProtoClass(proto) {
     if (proto.startsWith('TLS') || proto.startsWith('SSL')) return 'iso15118-proto-tls';
     if (proto === 'ICMPv6') return 'iso15118-proto-icmpv6';
     if (proto === 'TCP') return 'iso15118-proto-tcp';
+    if (proto === 'Modbus/TCP') return 'iso15118-proto-modbus';
     if (proto === 'UDP' || proto === 'MDNS' || proto === 'DHCPv6') return 'iso15118-proto-udp';
     return '';
 }
@@ -2380,6 +2384,156 @@ function renderIso15118Tree(nodes, topLevel, openAll) {
     });
 
     return container;
+}
+
+
+// Modbus socket trace: connection events and one reconstructed packet per ADU.
+function modbusViewerRows(data, serverName = T.modbus_server) {
+    const packets = new Map(data.packets.map(packet => [packet[0], packet]));
+    const connections = new Map(data.connections.map(connection => [connection.connection, connection]));
+    return data.events.map((event, index) => {
+        const connection = connections.get(event.connection);
+        const client = event.client === undefined ? '—' : `${T.modbus_client} ${event.client}`;
+        const packet = packets.get(event.frame);
+        const info = packet ? packet[6] : (T['modbus_' + event.kind] || event.kind);
+        const source = event.direction === 'S' ? serverName : client;
+        const destination = event.direction === 'S' ? client : serverName;
+        const lines = event.lines.join(', ');
+        const tree = [
+            `${T.modbus_lines}: ${lines}`,
+            ...(connection ? [
+                `${T.modbus_connection}: ${connection.connection} (${client})`,
+                `${T.modbus_endpoint}: ${connection.endpoint || '—'}`,
+                `IPv6: ${connection.ip}`,
+            ] : []),
+            ...(event.frame ? [`${T.modbus_frame}: ${event.frame}`] : []),
+            ...(event.data ? [[event.kind === 'message' ? T.modbus_payload : T.modbus_raw_trace, [event.data]]] : []),
+            ...(packet ? packet[7] : []),
+        ];
+        return {
+            cells: [index + 1, source, destination, packet ? packet[4] :
+                (event.kind === 'message' ? 'Modbus/TCP' : 'Socket'),
+                event.direction && /^[0-9a-f]+$/i.test(event.data || '') && event.data.length % 2 === 0
+                    ? event.data.length / 2 : '—', info],
+            info, tree, endpoint: connection ? connection.endpoint || '' : '',
+        };
+    });
+}
+
+function initModbusPacketList(snapshot, serverName) {
+    const status = document.getElementById('modbus-status');
+    if (!status) return;
+    let url = location.pathname.replace(/\/+$/, '') + '/modbus.json';
+    if (snapshot) url += '?snapshot=' + encodeURIComponent(snapshot);
+    fetch(url).then(response => {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+    }).then(data => {
+        status.textContent = data.dissection_error ? T.modbus_dissection_failed : '';
+        initTracePacketTable('modbus', modbusViewerRows(data, serverName));
+    }).catch(error => {
+        console.error('Modbus trace failed:', error);
+        status.textContent = T.modbus_load_failed;
+    });
+}
+
+// Shared packet table behavior; protocol trees use the same renderer as ISO 15118.
+function initTracePacketTable(prefix, rows) {
+    const element = suffix => document.getElementById(prefix + '-' + suffix);
+    const tbody = element('tbody');
+    const detail = element('detail');
+    const media = window.matchMedia('(min-width: 1200px)');
+    let selected = null;
+    let inline = null;
+    function clear(restoreFocus = false) {
+        detail.classList.add('d-none');
+        element('detail-host').appendChild(detail);
+        element('workspace').classList.remove('has-selection');
+        if (inline) inline.remove();
+        inline = null;
+        if (selected) {
+            selected.classList.remove('iso15118-selected');
+            selected.setAttribute('aria-expanded', 'false');
+            if (restoreFocus) selected.focus({preventScroll: true});
+        }
+        selected = null;
+    }
+    function place() {
+        if (!selected) return;
+        if (media.matches) {
+            element('detail-host').appendChild(detail);
+            if (inline) inline.remove();
+            inline = null;
+        } else {
+            if (!inline) {
+                inline = document.createElement('tr');
+                inline.className = 'iso15118-detail-row';
+                const cell = document.createElement('td');
+                cell.colSpan = 6;
+                inline.appendChild(cell);
+                selected.after(inline);
+            }
+            inline.firstElementChild.appendChild(detail);
+        }
+    }
+    function select(row) {
+        const same = selected === row;
+        clear();
+        if (same) return;
+        selected = row;
+        const item = rows[Number(row.dataset.idx)];
+        element('detail-title').textContent = `${T.iso15118_col_no} ${item.cells[0]} · ${item.cells[3]}`;
+        element('detail-summary').textContent = item.info;
+        element('detail-body').replaceChildren(renderIso15118Tree(item.tree, true, false));
+        row.classList.add('iso15118-selected');
+        row.setAttribute('aria-expanded', 'true');
+        element('workspace').classList.add('has-selection');
+        detail.classList.remove('d-none');
+        place();
+        element('detail-body').scrollTop = 0;
+    }
+    function render() {
+        clear();
+        const needle = element('filter').value.trim().toLowerCase();
+        const fragment = document.createDocumentFragment();
+        let shown = 0;
+        rows.forEach((item, index) => {
+            if (needle && !(item.cells.join(' ') + ' ' + item.endpoint).toLowerCase().includes(needle)) return;
+            ++shown;
+            const row = document.createElement('tr');
+            row.dataset.idx = index;
+            row.tabIndex = 0;
+            row.setAttribute('aria-expanded', 'false');
+            row.setAttribute('aria-controls', prefix + '-detail');
+            row.className = iso15118ProtoClass(item.cells[3]);
+            const classes = ['no', 'addr', 'addr', 'proto', 'len', 'info'];
+            item.cells.forEach((text, column) => {
+                const cell = document.createElement('td');
+                cell.textContent = text;
+                cell.title = text;
+                cell.className = 'iso15118-col-' + classes[column];
+                row.appendChild(cell);
+            });
+            fragment.appendChild(row);
+        });
+        tbody.replaceChildren(fragment);
+        element('count').textContent = `${shown} / ${rows.length}`;
+    }
+    element('filter').disabled = false;
+    element('filter').addEventListener('input', render);
+    element('close').addEventListener('click', () => clear(true));
+    tbody.addEventListener('click', event => {
+        const row = event.target.closest('tr[data-idx]');
+        if (row) select(row);
+    });
+    tbody.addEventListener('keydown', event => {
+        if (event.target.matches('tr[data-idx]') && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            select(event.target);
+        }
+    });
+    media.addEventListener('change', place);
+    render();
 }
 
 

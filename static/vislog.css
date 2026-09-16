@@ -1393,6 +1393,7 @@ footer a:hover {
 .iso15118-proto-tls    { background: rgba(230, 180,  60, 0.16); }
 .iso15118-proto-icmpv6 { background: rgba(240, 110, 170, 0.13); }
 .iso15118-proto-tcp    { background: rgba(140, 160, 180, 0.12); }
+.iso15118-proto-modbus { background: rgba( 60, 200, 120, 0.14); }
 .iso15118-proto-udp    { background: rgba( 90, 170, 240, 0.13); }
 
 .iso15118-table tbody tr[data-idx]:hover {
@@ -1437,7 +1438,8 @@ footer a:hover {
   border-bottom: 1px solid var(--bs-border-color);
 }
 
-#iso15118-detail-title {
+#iso15118-detail-title,
+#modbus-detail-title {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
