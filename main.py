@@ -700,7 +700,7 @@ def parse_coredump(coredump_blocks):
     raw_text = '\n\n'.join(coredump_blocks)
 
     # Check for "no coredump" message
-    if 'Es befindet sich kein Coredump' in raw_text:
+    if not raw_text.strip() or 'Es befindet sich kein Coredump' in raw_text or raw_text.strip() == 'No core dump stored':
         return result
 
     # Extract base64 data

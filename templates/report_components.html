@@ -63,11 +63,13 @@
             </ul>
         </li>
         {% endif %}
+        {% if data.coredump_info.has_coredump %}
         <li class="nav-item" role="presentation">
             <a class="nav-link" id="dump-tab" href="#tab=dump-tab" data-bs-toggle="tab" data-bs-target="#report-dump" role="tab">
                 <i class="bi bi-file-binary"></i> {{ t.tab_coredump }}
             </a>
         </li>
+        {% endif %}
 {% endmacro %}
 
 {% macro report_feature_panes(data, t, request) %}
@@ -166,8 +168,8 @@
             {% endif %}
         </div>
         {% endfor %}
+        {% if data.coredump_info.has_coredump %}
         <div class="tab-pane fade p-3" id="report-dump" role="tabpanel">
-            {% if data.coredump_info.has_coredump %}
             <div class="row">
                 <div class="col-lg-6">
                     <!-- Firmware Info Card -->
@@ -269,10 +271,6 @@
                 <strong>{{ t.hint_label }}</strong> {{ t.coredump_hint }}
                 <code>coredump.py</code>{{ t.coredump_hint_suffix }}
             </div>
-            {% else %}
-            <div class="alert alert-secondary">
-                <i class="bi bi-info-circle"></i> {{ t.no_coredump }}
-            </div>
-            {% endif %}
         </div>
+        {% endif %}
 {% endmacro %}
