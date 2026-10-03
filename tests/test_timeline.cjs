@@ -98,3 +98,15 @@ test('midnight adds date context to ticks and recorded/packet timestamps', () =>
     assert.equal(evaluate('protoFormatTime(1200)'), '00:00:00.200');
     assert.equal(evaluate('protoFormatTime(0)'), '2026-09-13 23:59:59.000');
 });
+
+test('nearest sorted index picks the closest x, independent of array index', () => {
+    // Sparse x values like the charge manager allocation column
+    const xs = [3, 10, 25, 40];
+    const nearest = target => evaluate(`nearestSortedIndex(${xs.length}, i => [${xs}][i], ${target})`);
+    assert.equal(nearest(0), 0);
+    assert.equal(nearest(9), 1);
+    assert.equal(nearest(17), 1);  // tie between 10 and 25 -> earlier
+    assert.equal(nearest(18), 2);
+    assert.equal(nearest(100), 3);
+    assert.equal(evaluate('nearestSortedIndex(0, i => i, 5)'), -1);
+});

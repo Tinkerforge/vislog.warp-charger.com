@@ -313,7 +313,9 @@ const chartPresentationPlugin = {
         const active = chart.tooltip?.getActiveElements() || [];
         if (!active.length || !chart.tooltip.opacity) return;
         const {ctx, chartArea: area} = chart;
-        const x = active[0].element.x;
+        const x = chart.$hoverX != null
+            ? chart.scales.x.getPixelForValue(chart.$hoverX)
+            : active[0].element.x;
         if (x < area.left || x > area.right) return;
         const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
         ctx.save();
@@ -490,6 +492,55 @@ function chartHoverInspector({chart, tooltip}) {
 }
 
 /**
+ * Index of the entry whose x value is closest to target, given a sorted
+ * (ascending) sequence of `length` x values provided by getX(i). Ties
+ * resolve to the earlier entry. Returns -1 for an empty sequence.
+ */
+function nearestSortedIndex(length, getX, target) {
+    if (length <= 0) return -1;
+    let lo = 0, hi = length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (getX(mid) < target) lo = mid + 1;
+        else hi = mid;
+    }
+    if (lo > 0 && Math.abs(getX(lo - 1) - target) <= Math.abs(getX(lo) - target)) lo--;
+    return lo;
+}
+
+/**
+ * Chart.js interaction mode for charts that mix dense datasets (one value
+ * per label) with sparse {x, y} datasets. The built-in 'index' mode reuses
+ * the data array index of the nearest element for every dataset, which is
+ * wrong for sparse datasets (array index != x). This mode snaps the cursor
+ * to the nearest x value and picks, per dataset, the point closest to it.
+ * The snapped x is stored as chart.$hoverX for the crosshair and title.
+ */
+function chartNearestXInteraction(chart, e, options, useFinalPosition) {
+    const pos = Chart.helpers.getRelativePosition(e, chart);
+    const area = chart.chartArea;
+    chart.$hoverX = null;
+    if (!area || pos.x < area.left || pos.x > area.right ||
+        pos.y < area.top || pos.y > area.bottom) return [];
+    const scale = chart.scales.x;
+    let hoverX = scale.getValueForPixel(pos.x);
+    if (!Number.isFinite(hoverX)) return [];
+    if (scale.type === 'category') {
+        const maxIndex = (chart.data.labels || []).length - 1;
+        hoverX = Math.max(0, Math.min(maxIndex, Math.round(hoverX)));
+    }
+    const items = [];
+    chart.getSortedVisibleDatasetMetas().forEach(meta => {
+        const getX = i => meta.controller.getParsed(i).x;
+        const index = nearestSortedIndex(meta.data.length, getX, hoverX);
+        const element = meta.data[index];
+        if (element && !element.skip) items.push({element, datasetIndex: meta.index, index});
+    });
+    if (items.length) chart.$hoverX = hoverX;
+    return items;
+}
+
+/**
  * Create (or recreate) a time-series Chart.js line chart.
  *
  * @param {Object} cfg
@@ -509,6 +560,8 @@ function chartHoverInspector({chart, tooltip}) {
  * @param {Object}        [cfg.xScale]           - x-axis overrides (e.g. numeric time bounds)
  * @param {Array}         [cfg.plugins]          - chart-local plugins
  * @param {string}        [cfg.pickerPrefix]     - synchronize legend with signal picker
+ * @param {boolean}       [cfg.nearestXInteraction] - hover picks the nearest point per
+ *                                                    dataset by x (for sparse {x, y} data)
  * @returns {Chart}       the new Chart instance
  */
 function _createTimeSeriesChart(cfg) {
@@ -558,6 +611,12 @@ function _createTimeSeriesChart(cfg) {
         tooltipCallbacks.title = cfg.tooltipTitleCallback;
     }
 
+    let interactionMode = 'index';
+    if (cfg.nearestXInteraction) {
+        Chart.Interaction.modes.nearestX = chartNearestXInteraction;
+        interactionMode = 'nearestX';
+    }
+
     const chart = new Chart(canvas, {
         type: 'line',
         plugins: [chartPresentationPlugin, chartLegendPlugin, ...(cfg.plugins || [])],
@@ -573,7 +632,7 @@ function _createTimeSeriesChart(cfg) {
             },
             maintainAspectRatio: false,
             elements: { point: { radius: 0 } },
-            interaction: { mode: 'index', axis: 'x', intersect: false },
+            interaction: { mode: interactionMode, axis: 'x', intersect: false },
             plugins: {
                 title: {
                     display: !!cfg.titleText,
@@ -583,7 +642,7 @@ function _createTimeSeriesChart(cfg) {
                 tooltip: {
                     enabled: false,
                     external: chartHoverInspector,
-                    mode: 'index',
+                    mode: interactionMode,
                     axis: 'x',
                     intersect: false,
                     callbacks: tooltipCallbacks,
@@ -2743,6 +2802,8 @@ function renderCmChart() {
         xMaxTicksLimit: 10,
         zoomXKey: 'cmzx',
         zoomYKey: 'cmzy',
+        // Allocation/step/hysteresis columns are sparse {x, y} points.
+        nearestXInteraction: true,
         xTickCallback: function(value) {
             const ts = nearestTimestamp(value);
             if (ts) return ts.split(' ')[1] || ts;
@@ -2750,7 +2811,7 @@ function renderCmChart() {
         },
         tooltipTitleCallback: function(items) {
             if (!items.length) return '';
-            const idx = items[0].parsed.x;
+            const idx = items[0].chart.$hoverX ?? items[0].parsed.x;
             const ts = tsMap[idx] || nearestTimestamp(idx);
             return ts ? `Row ${idx} - ${ts}` : `Row ${idx}`;
         },
