@@ -2287,7 +2287,7 @@ function iso15118FormatTime(epoch) {
         // Absolute time in the charger's timezone (matching the trace/event
         // log timestamps, which are in local time). Falls back to UTC if the
         // charger's timezone is unknown (tz_offset = 0).
-        return new Date((epoch + iso15118TzOffset) * 1000).toISOString().substring(11, 23);
+        return new Date((epoch + iso15118TzOffset) * 1000).toISOString().substring(0, 23).replace('T', ' ');
     }
     // No RTC reference: epoch equals the uptime
     const ms = Math.round(epoch * 1000);

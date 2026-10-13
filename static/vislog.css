@@ -1490,7 +1490,7 @@ footer a:hover {
   }
 
   .iso15118-workspace.has-selection .iso15118-col-no { width: 3rem; }
-  .iso15118-workspace.has-selection .iso15118-col-time { width: 7.25rem; }
+  .iso15118-workspace.has-selection .iso15118-col-time { width: 12.25rem; }
   .iso15118-workspace.has-selection .iso15118-col-addr { width: 7rem; }
   .iso15118-workspace.has-selection .iso15118-col-proto { width: 5.5rem; }
   .iso15118-workspace.has-selection .iso15118-col-len { width: 3.5rem; }
